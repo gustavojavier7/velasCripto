@@ -837,17 +837,68 @@
                 toggleTablaButton.style.display = 'inline-block';
                 toggleTablaButton.textContent = 'Ver tabla de velas';
 
-                // Definir métricas base
+                // === MÉTRICAS REALES BASADAS EN EL DATASET ===
+
+                // Calcular asimetría (skewness)
+                function calcularAsimetria(valores) {
+                    const n = valores.length;
+                    const media = valores.reduce((a,b)=>a+b,0)/n;
+                    const desv = Math.sqrt(valores.reduce((a,b)=>a+Math.pow(b-media,2),0)/n);
+                    if (desv === 0) return 0;
+                    const sumCubos = valores.reduce((a,b)=>a+Math.pow((b-media)/desv,3),0);
+                    return sumCubos / n;
+                }
+
+                // Calcular curtosis (kurtosis excesiva)
+                function calcularCurtosis(valores) {
+                    const n = valores.length;
+                    const media = valores.reduce((a,b)=>a+b,0)/n;
+                    const desv = Math.sqrt(valores.reduce((a,b)=>a+Math.pow(b-media,2),0)/n);
+                    if (desv === 0) return 0;
+                    const sumCuart = valores.reduce((a,b)=>a+Math.pow((b-media)/desv,4),0);
+                    return (sumCuart / n) - 3;
+                }
+
+                // Calcular autocorrelación normalizada (tipo Pearson)
+                function calcularAutocorrelacion(valores, lag) {
+                    if (valores.length <= lag) return 0;
+                    const n = valores.length;
+                    const media = valores.reduce((a,b)=>a+b,0)/n;
+                    const desv = Math.sqrt(valores.reduce((a,b)=>a+Math.pow(b-media,2),0)/(n-1));
+                    if (desv === 0) return 0;
+
+                    let num = 0;
+                    for (let i = lag; i < n; i++) {
+                        num += (valores[i] - media) * (valores[i - lag] - media);
+                    }
+                    const den = (n - lag) * Math.pow(desv, 2);
+                    return num / den;
+                }
+
+                // Obtener series desde dataset
                 const closes = datosRaw.map(v => parseFloat(v[4]));
+                const volumenes = datosRaw.map(v => parseFloat(v[5]));
+
+                // Calcular métricas principales
                 const ema = calcularEMAserie(closes, 14)[closes.length - 1];
                 const precioMedio = closes.reduce((a,b)=>a+b,0)/closes.length;
+                const asimetria = calcularAsimetria(closes);
+                const curtosis = calcularCurtosis(closes);
+                const autocorr480 = calcularAutocorrelacion(closes, Math.min(480, closes.length - 1));
+
+                // Ratio de volumen taker/total simulado con base en el último volumen
+                const ratioTaker = volumenes.length > 0
+                    ? volumenes[volumenes.length - 1] / volumenes.reduce((a,b)=>a+b,0)
+                    : 0.5;
+
+                // Construir objeto de métricas reales
                 const metrics = {
                     "EMA": ema,
                     "Pronóstico Lineal": precioMedio,
-                    "Curtosis": -0.57,
-                    "Asimetría Precios": -0.79,
-                    "Auto Correlación 24h": 0.32,
-                    "Prop Vol Taker Buy / Vol": 0.52
+                    "Curtosis": curtosis,
+                    "Asimetría Precios": asimetria,
+                    "Auto Correlación 24h": autocorr480,
+                    "Prop Vol Taker Buy / Vol": ratioTaker
                 };
 
                 // Ejecutar simulación
