@@ -796,7 +796,10 @@
                 const dt = (tfMin * steps) / (60 * 24 * 365);
 
                 // Simulación
-                const S0 = precios[precios.length - 1];
+                const ultimaVela = datos.reduce((masReciente, velaActual) => (
+                    parseFloat(velaActual[0]) > parseFloat(masReciente[0]) ? velaActual : masReciente
+                ), datos[0]);
+                const S0 = parseFloat(ultimaVela[4]);
                 const nSim = 10000;
                 const finales = [];
                 for (let j = 0; j < nSim; j++) {
