@@ -175,7 +175,7 @@
             <button type="submit">Consultar</button>
             <button type="button" id="buscarMaximos" style="display:none;">Buscar Pares en Máximos</button>
             <button type="button" id="exportarCSV">Exportar CSV</button>
-            <button type="button" id="calcularResumen" style="display:none;">Calcular Métricas y Puntos de Entrada</button>
+            <button type="button" id="calcularResumen" style="display:none;">Simulación Monte Carlo</button>
             <button type="button" id="toggleTabla" style="display:none;">Ver tabla de velas</button>
         </fieldset>
     </form>
@@ -727,14 +727,6 @@
                 }
                 return atr.toFixed(8);
             }
-            function calcularPuntosEntrada(closes, highs, lows) {
-                const mean = closes.reduce((sum, p) => sum + p, 0) / closes.length;
-                const variance = closes.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / closes.length;
-                const std = Math.sqrt(variance);
-                const lowPrice = mean - 2 * std;
-                const highPrice = mean + 2 * std;
-                return { long: lowPrice.toFixed(8), short: highPrice.toFixed(8) };
-            }
             function mostrarResumen(periodo) {
                 const closes = datosRaw.map(v => parseFloat(v[4]));
                 const highs = datosRaw.map(v => parseFloat(v[2]));
@@ -756,9 +748,6 @@
                 const s1 = (2 * pivot) - high;
                 const s2 = pivot - (high - low);
                 
-                // Calcular puntos de entrada usando los datos actuales del timeframe seleccionado
-                const puntos = calcularPuntosEntrada(closes, highs, lows);
-                
                 const html = `
                     <h2>Métricas (Periodo: ${periodo}) - Timeframe: ${currentTimeframe}</h2>
                     <p>RSI: ${rsi} (${interpretacionRSI})</p>
@@ -769,12 +758,66 @@
                     <p>Punto Pivote: ${pivot.toFixed(8)}</p>
                     <p>Resistencia 1: ${r1.toFixed(8)} | Resistencia 2: ${r2.toFixed(8)}</p>
                     <p>Soporte 1: ${s1.toFixed(8)} | Soporte 2: ${s2.toFixed(8)}</p>
-                    <h2>Puntos de Entrada (basados en timeframe ${currentTimeframe})</h2>
-                    <p>Entrada Long (Compra): ${puntos.long}</p>
-                    <p>Entrada Short (Venta): ${puntos.short}</p>
-                    <p><em>Nota: Los puntos de entrada se calculan usando desviación estándar (±2σ) sobre los datos del timeframe actual.</em></p>
                 `;
                 document.getElementById('resumen').innerHTML = html;
+            }
+            // --- Simulación Monte Carlo (ajustada a TF dinámico y 20 velas fijas) ---
+            function simularMonteCarlo(datos, metrics) {
+                const precios = datos.map(v => parseFloat(v[4]));
+                const rendimientos = [];
+                for (let i = 1; i < precios.length; i++) {
+                    rendimientos.push(Math.log(precios[i] / precios[i - 1]));
+                }
+
+                const mu = rendimientos.reduce((a,b)=>a+b,0)/rendimientos.length;
+                const sigma = Math.sqrt(rendimientos.reduce((a,b)=>a+Math.pow(b-mu,2),0)/(rendimientos.length-1));
+
+                // Ajuste por métricas
+                const fgap = (metrics["Pronóstico Lineal"] - metrics["EMA"]) / metrics["EMA"];
+                const mu_adj = mu * (1 + 0.5*fgap + 0.2*metrics["Auto Correlación 24h"]);
+                const sigma_adj = sigma * (1 + 0.3*Math.abs(metrics["Asimetría Precios"]) + 0.2*Math.abs(metrics["Curtosis"]));
+                const bias = (metrics["Prop Vol Taker Buy / Vol"] - 0.5) * 0.25;
+
+                // Ajuste del horizonte según TF
+                const steps = 20;
+                let tfMin = 3;
+                if (typeof currentTimeframe === 'string') {
+                    const match = currentTimeframe.match(/(\d+)([mhdwM])/);
+                    if (match) {
+                        const n = parseInt(match[1]);
+                        const u = match[2];
+                        if (u === 'm') tfMin = n;
+                        else if (u === 'h') tfMin = n * 60;
+                        else if (u === 'd') tfMin = n * 1440;
+                        else if (u === 'w') tfMin = n * 10080;
+                        else if (u === 'M') tfMin = n * 43200;
+                    }
+                }
+                const dt = (tfMin * steps) / (60 * 24 * 365);
+
+                // Simulación
+                const S0 = precios[precios.length - 1];
+                const nSim = 10000;
+                const finales = [];
+                for (let j = 0; j < nSim; j++) {
+                    let S = S0;
+                    for (let t = 0; t < steps; t++) {
+                        const Z = (Math.random()*2-1) + bias;
+                        S *= Math.exp((mu_adj - 0.5*sigma_adj**2)*dt + sigma_adj*Math.sqrt(dt)*Z);
+                    }
+                    finales.push(S);
+                }
+
+                finales.sort((a,b)=>a-b);
+                const promedio = finales.reduce((a,b)=>a+b,0)/nSim;
+                const p2_5 = finales[Math.floor(0.025*nSim)];
+                const p97_5 = finales[Math.floor(0.975*nSim)];
+                const subida = finales.filter(f=>f>S0).length/nSim*100;
+                const bajada = 100-subida;
+                const var95 = finales[Math.floor(0.05*nSim)]-S0;
+                const horizonteHoras = (tfMin*steps)/60;
+
+                return {S0,promedio,subida,bajada,ic95:[p2_5,p97_5],var95,horizonteHoras};
             }
             calcularResumenButton.addEventListener('click', () => {
                 if (datosRaw.length === 0) {
@@ -782,29 +825,59 @@
                     return;
                 }
 
-                // Ocultar tabla y progresos
+                // Ocultar tabla y limpiar todo el cuerpo visual
                 resultadosDiv.style.display = 'none';
+                document.body.scrollTop = 0;
+                document.documentElement.scrollTop = 0;
+                resumenDiv.innerHTML = '<div id="resumen" style="padding:30px;font-family:monospace;"></div>';
+                resumenDiv.style.display = 'block';
                 toggleTablaButton.style.display = 'inline-block';
                 toggleTablaButton.textContent = 'Ver tabla de velas';
 
-                // Mostrar resumen
-                resumenDiv.innerHTML = `
-                    <div id="resumen"></div>
-                    <div style="margin-top:10px;">
-                        <label><input type="radio" name="periodo" value="14" checked>14</label>
-                        <label><input type="radio" name="periodo" value="21">21</label>
-                        <label><input type="radio" name="periodo" value="39">39</label>
-                        <label><input type="radio" name="periodo" value="60">60</label>
-                        <label><input type="radio" name="periodo" value="100">100</label>
-                        <label><input type="radio" name="periodo" value="200">200</label>
-                        <button id="recalcularResumen">Recalcular</button>
-                    </div>
-                `;
-                resumenDiv.style.display = 'block';
-                mostrarResumen(14);
-                resumenDiv.querySelector('#recalcularResumen').addEventListener('click', () => {
-                    const periodo = parseInt(resumenDiv.querySelector('input[name="periodo"]:checked').value);
-                    mostrarResumen(periodo);
+                // Definir métricas base
+                const closes = datosRaw.map(v => parseFloat(v[4]));
+                const ema = calcularEMAserie(closes, 14)[closes.length - 1];
+                const precioMedio = closes.reduce((a,b)=>a+b,0)/closes.length;
+                const metrics = {
+                    "EMA": ema,
+                    "Pronóstico Lineal": precioMedio,
+                    "Curtosis": -0.57,
+                    "Asimetría Precios": -0.79,
+                    "Auto Correlación 24h": 0.32,
+                    "Prop Vol Taker Buy / Vol": 0.52
+                };
+
+                // Ejecutar simulación
+                const sim = simularMonteCarlo(datosRaw, metrics);
+                const steps = 20;
+
+                // Generar HTML
+                const html = `
+        <h1>Simulación Monte Carlo (${steps} velas - TF: ${currentTimeframe})</h1>
+        <p><b>Horizonte total:</b> ${sim.horizonteHoras.toFixed(2)} horas</p>
+        <p><b>Precio inicial:</b> ${sim.S0.toFixed(2)} USDT</p>
+        <p><b>Precio promedio proyectado:</b> ${sim.promedio.toFixed(2)} USDT</p>
+        <p><b>Probabilidad de subida:</b> ${sim.subida.toFixed(2)}%</p>
+        <p><b>Probabilidad de bajada:</b> ${sim.bajada.toFixed(2)}%</p>
+        <p><b>Intervalo 95%:</b> [${sim.ic95[0].toFixed(2)} ; ${sim.ic95[1].toFixed(2)}]</p>
+        <p><b>Value at Risk (95%):</b> ${sim.var95.toFixed(2)} USDT</p>
+        <p style="margin-top:10px;color:#666;">
+            Esta simulación reemplaza los puntos de entrada tradicionales.
+            Los valores reflejan proyecciones probabilísticas sobre el horizonte equivalente.
+        </p>
+        <button id="exportarPDF">Exportar PDF</button>
+    `;
+                document.getElementById('resumen').innerHTML = html;
+
+                // Exportar a PDF
+                document.getElementById('exportarPDF').addEventListener('click', () => {
+                    const contenido = document.getElementById('resumen').innerHTML;
+                    const ventana = window.open('', '', 'width=800,height=600');
+                    ventana.document.write('<html><head><title>Simulación Monte Carlo</title></head><body>');
+                    ventana.document.write(contenido);
+                    ventana.document.write('</body></html>');
+                    ventana.document.close();
+                    ventana.print();
                 });
             });
 
