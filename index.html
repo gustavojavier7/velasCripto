@@ -691,7 +691,7 @@
                 return rsi.toFixed(2);
             }
             function calcularEMAserie(prices, period) {
-                if (prices.length < period) return 'N/A';
+                if (!Array.isArray(prices) || prices.length < period || period <= 0) return null;
                 const emaArray = new Array(prices.length);
                 let sum = 0;
                 for (let i = 0; i < period; i++) sum += prices[i];
@@ -709,11 +709,13 @@
                 if (prices.length < longPeriod + signalPeriod) return {macd: 'N/A', signal: 'N/A', histogram: 'N/A', params: ''};
                 const emaShort = calcularEMAserie(prices, shortPeriod);
                 const emaLong = calcularEMAserie(prices, longPeriod);
+                if (!emaShort || !emaLong) return {macd: 'N/A', signal: 'N/A', histogram: 'N/A', params: ''};
                 const macdLine = [];
                 for (let i = longPeriod - 1; i < prices.length; i++) {
                     macdLine.push(emaShort[i] - emaLong[i]);
                 }
                 const signalLine = calcularEMAserie(macdLine, signalPeriod);
+                if (!signalLine) return {macd: 'N/A', signal: 'N/A', histogram: 'N/A', params: ''};
                 const histogram = [];
                 for (let i = signalPeriod - 1; i < macdLine.length; i++) {
                     histogram.push(macdLine[i] - signalLine[i]);
@@ -724,6 +726,47 @@
                     histogram: histogram[histogram.length - 1].toFixed(8),
                     params: `${shortPeriod}/${longPeriod}/${signalPeriod}`
                 };
+            }
+            function calcularMomentoCentral(valores, orden) {
+                if (!Array.isArray(valores) || valores.length === 0) return 0;
+                const media = valores.reduce((s, v) => s + v, 0) / valores.length;
+                return valores.reduce((s, v) => s + Math.pow(v - media, orden), 0) / valores.length;
+            }
+            function calcularDesviacionEstandar(valores) {
+                if (!Array.isArray(valores) || valores.length < 2) return 0;
+                const media = valores.reduce((s, v) => s + v, 0) / valores.length;
+                const varianza = valores.reduce((s, v) => s + Math.pow(v - media, 2), 0) / (valores.length - 1);
+                return Math.sqrt(varianza);
+            }
+            function calcularAsimetria(valores) {
+                if (!Array.isArray(valores) || valores.length < 3) return 0;
+                const desviacion = calcularDesviacionEstandar(valores);
+                if (desviacion === 0) return 0;
+                const momento3 = calcularMomentoCentral(valores, 3);
+                return momento3 / Math.pow(desviacion, 3);
+            }
+            function calcularCurtosis(valores) {
+                if (!Array.isArray(valores) || valores.length < 4) return 0;
+                const desviacion = calcularDesviacionEstandar(valores);
+                if (desviacion === 0) return 0;
+                const momento4 = calcularMomentoCentral(valores, 4);
+                const curtosisExceso = momento4 / Math.pow(desviacion, 4);
+                return curtosisExceso - 3;
+            }
+            function calcularAutocorrelacion(valores, lag) {
+                if (!Array.isArray(valores) || valores.length <= lag || lag < 1) return 0;
+                const media = valores.reduce((s, v) => s + v, 0) / valores.length;
+                let numerador = 0;
+                let denominador = 0;
+                for (let i = 0; i < valores.length; i++) {
+                    const desviacion = valores[i] - media;
+                    denominador += desviacion * desviacion;
+                    if (i >= lag) {
+                        numerador += desviacion * (valores[i - lag] - media);
+                    }
+                }
+                if (denominador === 0) return 0;
+                return numerador / denominador;
             }
             function calcularATR(highs, lows, closes, periodo) {
                 if (highs.length < periodo + 1) return 'N/A';
@@ -744,11 +787,16 @@
                 const lows = datosRaw.map(v => parseFloat(v[3]));
                 const rsi = calcularRSI(closes, periodo);
                 const interpretacionRSI = rsi > 70 ? 'Sobrecompra' : rsi < 30 ? 'Sobrevenda' : 'Neutral';
-                const ema = calcularEMAserie(closes, periodo)[closes.length - 1].toFixed(8);
+                const emaSerie = calcularEMAserie(closes, periodo);
+                const emaValor = emaSerie ? emaSerie[closes.length - 1] : null;
+                const ema = emaValor !== null && emaValor !== undefined ? emaValor.toFixed(8) : 'N/A';
                 const atr = calcularATR(highs, lows, closes, periodo);
                 const macd = calcularMACD(closes, periodo);
                 const precioMedio = closes.reduce((sum, p) => sum + p, 0) / closes.length;
-                const volatilidadRelativa = ((parseFloat(atr) / precioMedio) * 100).toFixed(2) + '%';
+                const atrValor = parseFloat(atr);
+                const volatilidadRelativa = Number.isFinite(atrValor)
+                    ? ((atrValor / precioMedio) * 100).toFixed(2) + '%'
+                    : 'N/A';
                 const ultimaVela = datosRaw[datosRaw.length - 1];
                 const high = parseFloat(ultimaVela[2]);
                 const low = parseFloat(ultimaVela[3]);
@@ -871,8 +919,9 @@
                 const volumenes = datosParaCalculo.map(v => parseFloat(v[5]));
 
                 // Calcular métricas principales
-                const ema = calcularEMAserie(closes, 14)[closes.length - 1];
                 const precioMedio = closes.reduce((a,b)=>a+b,0)/closes.length;
+                const emaSerie14 = calcularEMAserie(closes, 14);
+                const ema = emaSerie14 ? emaSerie14[closes.length - 1] : precioMedio;
                 const asimetria = calcularAsimetria(closes);
                 const curtosis = calcularCurtosis(closes);
                 
