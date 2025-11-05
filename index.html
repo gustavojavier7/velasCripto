@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Reporte de Criptomonedas v1.1.3</title>
+    <title>Reporte de Criptomonedas v1.1.4</title>
     <style>
         body {
             margin: 0;
@@ -116,7 +116,7 @@
 </head>
 <body>
     <div class="header-info">
-        <h1 id="tituloReporte">Reporte de Criptomonedas v1.1.3</h1>
+        <h1 id="tituloReporte">Reporte de Criptomonedas v1.1.4</h1>
         <div class="user-info">
             <p>Usuario: <span id="currentUser"></span></p>
             <p>Fecha y Hora (UTC): <span id="currentDateTime"></span></p>
@@ -204,7 +204,8 @@
         <div id="resumen"></div>
     </div>
     <script>
-        const VERSION = '1.1.3';
+        const VERSION = '1.1.4';
+        // CHANGELOG v1.1.4 (2025-11-05): Implementación del Método Box-Muller para distribución normal en Monte Carlo. El sesgo 'bias' se añade al drift 'mu_adj'. Se corrigió el orden de definición de la variable 'bias' para evitar errores de ejecución.
         // CHANGELOG v1.1.3 (2025-08-02): Modificado cálculo de puntos de entrada para usar el timeframe actual en lugar de datos diarios fijos.
         // Los puntos de entrada ahora se calculan con los mismos datos mostrados en la tabla.
         let currentUser = 'gustavojavier7';
@@ -271,6 +272,15 @@
             let currentTimeframe = '1h'; // Variable para almacenar el timeframe actual
             const lastPrices = {};
             const lastColors = {};
+
+            function randomStandardNormal() {
+                let u1 = 0;
+                let u2 = 0;
+                // Asegurar que los valores no sean 0 para evitar log(0)
+                while (u1 === 0) u1 = Math.random();
+                while (u2 === 0) u2 = Math.random();
+                return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+            }
 
             function actualizarColorPrecio(cell, key, nuevoPrecio) {
                 const precioAnterior = lastPrices[key];
@@ -774,9 +784,13 @@
 
                 // Ajuste por métricas
                 const fgap = (metrics["Pronóstico Lineal"] - metrics["EMA"]) / metrics["EMA"];
-                const mu_adj = mu * (1 + 0.5*fgap + 0.2*metrics["Auto Correlación 24h"]);
+                
+                // Se corrigió el orden: 'bias' debe definirse antes de 'mu_adj'
+                const bias = (metrics["Prop Vol Taker Buy / Vol"] - 0.5) * 0.25; 
+                
+                const mu_adj = mu * (1 + 0.5*fgap + 0.2*metrics["Auto Correlación 24h"]) + bias * 0.5;
                 const sigma_adj = sigma * (1 + 0.3*Math.abs(metrics["Asimetría Precios"]) + 0.2*Math.abs(metrics["Curtosis"]));
-                const bias = (metrics["Prop Vol Taker Buy / Vol"] - 0.5) * 0.25;
+                
 
                 // Ajuste del horizonte según TF
                 const steps = 20;
@@ -805,7 +819,7 @@
                 for (let j = 0; j < nSim; j++) {
                     let S = S0;
                     for (let t = 0; t < steps; t++) {
-                        const Z = (Math.random()*2-1) + bias;
+                        const Z = randomStandardNormal();
                         S *= Math.exp((mu_adj - 0.5*sigma_adj**2)*dt + sigma_adj*Math.sqrt(dt)*Z);
                     }
                     finales.push(S);
