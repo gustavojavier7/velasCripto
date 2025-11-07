@@ -869,8 +869,8 @@
 
                 // Ajuste por métricas trabajando sobre valores anualizados
                 const fgap = (metrics["Pronóstico Lineal"] - metrics["EMA"]) / metrics["EMA"];
-                const bias = (metrics["Prop Vol Taker Buy / Vol"] - 0.5) * 0.25; 
-                const C_control = 50;
+                const bias = (metrics["Prop Vol Taker Buy / Vol"] - 0.5) * 1.0 ;
+				const C_control = 50;
                 const factor_confianza_bias = sigma_anual !== 0 ? C_control / sigma_anual : C_control;
                 const mu_adj = mu_anual * (1 + 0.5*fgap + 0.2*metrics["Auto Correlación 24h"]) + bias * factor_confianza_bias;
                 const sigma_adj = sigma_anual * (1 + 0.3*Math.abs(metrics["Asimetría Precios"]) + 0.2*Math.abs(metrics["Curtosis"]));
