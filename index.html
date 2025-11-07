@@ -320,21 +320,32 @@
                 const codigo = timestamp.toString().padStart(16, '0');
                 return `${codigo.slice(0, 4)}-${codigo.slice(4, 8)}-${codigo.slice(8, 12)}-${codigo.slice(12, 16)}`;
             }
-            function formatearTituloReporte(tipoReporte, par, timeframe, codigoUnico, action = '') {
+            function formatearTituloReporte(tipoReporte, par, timeframe, codigoUnico, action = '', market = '') {
+                const marketLabel = market
+                    ? market.toLowerCase() === 'spot'
+                        ? 'SPOT'
+                        : market.toLowerCase() === 'futures'
+                            ? 'FUTUROS'
+                            : market.toUpperCase()
+                    : '';
                 let titulo;
                 if (action === 'candles') {
-                    titulo = `${par}${timeframe ? `_${timeframe}` : ''}_${codigoUnico}`;
+                    const partes = [];
+                    if (marketLabel) partes.push(marketLabel);
+                    if (par) partes.push(par);
+                    if (timeframe) partes.push(timeframe);
+                    if (codigoUnico) partes.push(codigoUnico);
+                    titulo = partes.join('_');
                 } else {
-                    titulo = `${tipoReporte}`;
+                    titulo = marketLabel ? `${marketLabel}_${tipoReporte}` : `${tipoReporte}`;
                     if (par && action !== 'marketData') titulo += `+${par}`;
-                    if (timeframe && action === 'candles') titulo += `+${timeframe}`;
                     if (codigoUnico) titulo += `+${codigoUnico}`;
                     titulo += `+${currentUser}`;
                 }
                 return titulo.replace(/ /g, '_');
             }
-            function actualizarTitulo(tipoReporte, par, timeframe, codigoUnico, action) {
-                const nuevoTitulo = formatearTituloReporte(tipoReporte, par, timeframe, codigoUnico, action);
+            function actualizarTitulo(tipoReporte, par, timeframe, codigoUnico, action, market) {
+                const nuevoTitulo = formatearTituloReporte(tipoReporte, par, timeframe, codigoUnico, action, market);
                 document.getElementById('tituloReporte').textContent = nuevoTitulo;
                 document.title = nuevoTitulo;
             }
@@ -363,7 +374,7 @@
                     const tipoReporte = determinarTipoReporte(action);
                     const datos = await realizarConsulta(par, action, intervalo);
                     procesarDatos(datos, action, par);
-                    actualizarTitulo(tipoReporte, par, intervalo, nuevoCodigoUnico, action);
+                    actualizarTitulo(tipoReporte, par, intervalo, nuevoCodigoUnico, action, marketSelect.value);
                     ocultarCargando();
                     calcularResumenButton.style.display = action === 'candles' ? 'inline-block' : 'none';
                     toggleTablaButton.style.display = 'none';
@@ -567,7 +578,7 @@
                 document.body.removeChild(link);
             }
             const codigoUnico = generarCodigoUnico();
-            actualizarTitulo('Reporte', '', '', codigoUnico);
+            actualizarTitulo('Reporte', '', '', codigoUnico, '', marketSelect ? marketSelect.value : '');
             mostrarCargando();
             Promise.all([
                 fetch(API_ENDPOINTS.SPOT.EXCHANGE_INFO),
