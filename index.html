@@ -844,40 +844,41 @@
                     rendimientos.push(Math.log(precios[i] / precios[i - 1]));
                 }
 
-                const mu = rendimientos.reduce((a,b)=>a+b,0)/rendimientos.length;
-                const sigma = Math.sqrt(rendimientos.reduce((a,b)=>a+Math.pow(b-mu,2),0)/(rendimientos.length-1));
+                const mu_periodo = rendimientos.reduce((a,b)=>a+b,0)/rendimientos.length;
+                const sigma_periodo = Math.sqrt(rendimientos.reduce((a,b)=>a+Math.pow(b-mu_periodo,2),0)/(rendimientos.length-1));
 
-                // Ajuste por métricas
+                // Factor temporal (minutos por timeframe y anualización)
+                const MINUTOS_POR_AÑO = 60 * 24 * 365;
+                const steps = 20;
+                let tfMin = 3;
+                if (typeof currentTimeframe === 'string') {
+                    const match = currentTimeframe.match(/(\d+)([mhdwM])/);
+                    if (match) {
+                        const n = parseInt(match[1]);
+                        const u = match[2];
+                        if (u === 'm') tfMin = n;
+                        else if (u === 'h') tfMin = n * 60;
+                        else if (u === 'd') tfMin = n * 1440;
+                        else if (u === 'w') tfMin = n * 10080;
+                        else if (u === 'M') tfMin = n * 43200;
+                    }
+                }
+                const N = MINUTOS_POR_AÑO / tfMin;
+                const mu_anual = mu_periodo * N;
+                const sigma_anual = sigma_periodo * Math.sqrt(N);
+
+                // Ajuste por métricas trabajando sobre valores anualizados
                 const fgap = (metrics["Pronóstico Lineal"] - metrics["EMA"]) / metrics["EMA"];
-                
-                // Se corrigió el orden: 'bias' debe definirse antes de 'mu_adj'
                 const bias = (metrics["Prop Vol Taker Buy / Vol"] - 0.5) * 0.25; 
-                
-                const mu_adj = mu * (1 + 0.5*fgap + 0.2*metrics["Auto Correlación 24h"]) + bias * 0.5;
-                const sigma_adj = sigma * (1 + 0.3*Math.abs(metrics["Asimetría Precios"]) + 0.2*Math.abs(metrics["Curtosis"]));
-                
+                const mu_adj = mu_anual * (1 + 0.5*fgap + 0.2*metrics["Auto Correlación 24h"]) + bias * 0.5;
+                const sigma_adj = sigma_anual * (1 + 0.3*Math.abs(metrics["Asimetría Precios"]) + 0.2*Math.abs(metrics["Curtosis"]));
 
-                // Ajuste del horizonte según TF
-		        const steps = 20;
-		        let tfMin = 3;
-		        if (typeof currentTimeframe === 'string') {
-		            const match = currentTimeframe.match(/(\d+)([mhdwM])/);
-		            if (match) {
-		                const n = parseInt(match[1]);
-		                const u = match[2];
-		                if (u === 'm') tfMin = n;
-		                else if (u === 'h') tfMin = n * 60;
-		                else if (u === 'd') tfMin = n * 1440;
-		                else if (u === 'w') tfMin = n * 10080;
-		                else if (u === 'M') tfMin = n * 43200;
-		            }
-		        }
-		        const dtStep = tfMin / (60 * 24 * 365);
-		        const driftTerm = (mu_adj - 0.5 * sigma_adj ** 2) * dtStep;
-		        const diffusionTerm = sigma_adj * Math.sqrt(dtStep);
+                const dtStep = tfMin / MINUTOS_POR_AÑO;
+                const driftTerm = (mu_adj - 0.5 * sigma_adj ** 2) * dtStep;
+                const diffusionTerm = sigma_adj * Math.sqrt(dtStep);
 
-		        // Simulación: la vela más reciente está en datos[0]
-		        const S0 = parseFloat(datos[0][4]);
+                // Simulación: la vela más reciente está en datos[0]
+                const S0 = parseFloat(datos[0][4]);
                 const nSim = 10000;
                 const finales = [];
                 for (let j = 0; j < nSim; j++) {
