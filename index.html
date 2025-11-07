@@ -432,8 +432,9 @@
                       progresoPorcentual.textContent = '100%';
                       totalPares.textContent = `Total de pares procesados: 1, Total de pares válidos: 1`;
                   } else if (action === 'candles') {
-                    datosRaw = datos; // Almacenar datos raw para análisis
-                    datos.reverse().forEach((vela, index) => {
+                    datosRaw = datos.slice(); // Mantener orden original (antiguo -> reciente) para análisis
+                    const datosTabla = datosRaw.slice().reverse();
+                    datosTabla.forEach((vela, index) => {
                         paresProcesados++;
                         paresValidosCount++;
                         progreso = Math.min(100, Math.round(((index + 1) / total) * 100));
@@ -822,7 +823,11 @@
             }
             // --- Simulación Monte Carlo (ajustada a TF dinámico y 20 velas fijas) ---
             function simularMonteCarlo(datos, metrics) {
-                const precios = datos.map(v => parseFloat(v[4]));
+                if (!datos.length) {
+                    throw new Error('No hay datos suficientes para la simulación.');
+                }
+                // Para calcular rendimientos mantenemos el orden cronológico (más antiguo -> más reciente)
+                const precios = datos.slice().reverse().map(v => parseFloat(v[4]));
                 const rendimientos = [];
                 for (let i = 1; i < precios.length; i++) {
                     rendimientos.push(Math.log(precios[i] / precios[i - 1]));
@@ -842,37 +847,36 @@
                 
 
                 // Ajuste del horizonte según TF
-                const steps = 20;
-                let tfMin = 3;
-                if (typeof currentTimeframe === 'string') {
-                    const match = currentTimeframe.match(/(\d+)([mhdwM])/);
-                    if (match) {
-                        const n = parseInt(match[1]);
-                        const u = match[2];
-                        if (u === 'm') tfMin = n;
-                        else if (u === 'h') tfMin = n * 60;
-                        else if (u === 'd') tfMin = n * 1440;
-                        else if (u === 'w') tfMin = n * 10080;
-                        else if (u === 'M') tfMin = n * 43200;
-                    }
-                }
-                const dt = (tfMin * steps) / (60 * 24 * 365);
+		        const steps = 20;
+		        let tfMin = 3;
+		        if (typeof currentTimeframe === 'string') {
+		            const match = currentTimeframe.match(/(\d+)([mhdwM])/);
+		            if (match) {
+		                const n = parseInt(match[1]);
+		                const u = match[2];
+		                if (u === 'm') tfMin = n;
+		                else if (u === 'h') tfMin = n * 60;
+		                else if (u === 'd') tfMin = n * 1440;
+		                else if (u === 'w') tfMin = n * 10080;
+		                else if (u === 'M') tfMin = n * 43200;
+		            }
+		        }
+		        const dtStep = tfMin / (60 * 24 * 365);
+		        const driftTerm = (mu_adj - 0.5 * sigma_adj ** 2) * dtStep;
+		        const diffusionTerm = sigma_adj * Math.sqrt(dtStep);
 
-                // Simulación
-                const ultimaVela = datos.reduce((masReciente, velaActual) => (
-                    parseFloat(velaActual[0]) > parseFloat(masReciente[0]) ? velaActual : masReciente
-                ), datos[0]);
-                const S0 = parseFloat(ultimaVela[4]);
+		        // Simulación: la vela más reciente está en datos[0]
+		        const S0 = parseFloat(datos[0][4]);
                 const nSim = 10000;
                 const finales = [];
                 for (let j = 0; j < nSim; j++) {
                     let S = S0;
-                    for (let t = 0; t < steps; t++) {
-                        const Z = randomStandardNormal();
-                        S *= Math.exp((mu_adj - 0.5*sigma_adj**2)*dt + sigma_adj*Math.sqrt(dt)*Z);
-                    }
-                    finales.push(S);
-                }
+		            for (let t = 0; t < steps; t++) {
+		                const Z = randomStandardNormal();
+		                S *= Math.exp(driftTerm + diffusionTerm * Z);
+		            }
+		            finales.push(S);
+		        }
 
                 finales.sort((a,b)=>a-b);
                 const promedio = finales.reduce((a,b)=>a+b,0)/nSim;
@@ -881,7 +885,7 @@
                 const subida = finales.filter(f=>f>S0).length/nSim*100;
                 const bajada = 100-subida;
                 const var95 = finales[Math.floor(0.05*nSim)]-S0;
-                const horizonteHoras = (tfMin*steps)/60;
+		        const horizonteHoras = (tfMin*steps)/60;
 
                 return {S0,promedio,subida,bajada,ic95:[p2_5,p97_5],var95,horizonteHoras};
             }
@@ -891,17 +895,18 @@
                     return;
                 }
 
-                // --- INICIO DE MODIFICACIÓN: Aplicar Lookback de 480 Velas ---
+                // La tabla muestra datosRaw invertido. Asumimos que datosRaw está
+                // ordenado del más antiguo al más reciente (Binance API).
                 const LOOKBACK_SIZE = 480;
-                // Usar solo las últimas 480 velas disponibles
-                const datosParaCalculo = datosRaw.slice(-LOOKBACK_SIZE);
+                // 1) Quedarnos con las últimas 480 velas disponibles
+                const datosParaCalculoRecientes = datosRaw.slice(-LOOKBACK_SIZE);
+                // 2) Invertir para que la vela más reciente esté en el índice 0
+                const datosParaCalculo = datosParaCalculoRecientes.reverse();
                 // Si hay menos de 20 velas (steps de la simulación), no se puede calcular.
                 if (datosParaCalculo.length < 20) {
                     alert('Se requieren al menos 20 velas para la simulación.');
                     return;
                 }
-                // --- FIN DE MODIFICACIÓN ---
-
 
                 // Ocultar tabla y limpiar todo el cuerpo visual
                 resultadosDiv.style.display = 'none';
@@ -912,11 +917,12 @@
                 toggleTablaButton.style.display = 'inline-block';
                 toggleTablaButton.textContent = 'Ver tabla de velas';
 
-                // === MÉTRICAS REALES BASADAS EN EL DATASET CORTADO ===
+                // === MÉTRICAS REALES BASADAS EN EL DATASET CORTADO E INVERTIDO ===
 
-                // Obtener series desde dataset CORTADO
+                // Obtener series desde dataset invertido (datosParaCalculo[0] es la vela más reciente)
                 const closes = datosParaCalculo.map(v => parseFloat(v[4]));
                 const volumenes = datosParaCalculo.map(v => parseFloat(v[5]));
+                const takerBuyVolumenes = datosParaCalculo.map(v => parseFloat(v[9]));
 
                 // Calcular métricas principales
                 const precioMedio = closes.reduce((a,b)=>a+b,0)/closes.length;
@@ -929,10 +935,9 @@
                 // Aunque el nombre es "Auto Correlación 24h", el cálculo se hace sobre el lookback de 480 puntos.
                 const autocorr480 = calcularAutocorrelacion(closes, Math.min(1, closes.length - 1));
 
-                // Ratio de volumen taker/total simulado con base en el último volumen
-                const ratioTaker = volumenes.length > 0
-                    ? volumenes[volumenes.length - 1] / volumenes.reduce((a,b)=>a+b,0)
-                    : 0.5;
+                const volumenTotal = volumenes.reduce((a,b)=>a+(Number.isFinite(b)?b:0),0);
+                const takerBuyVolumenTotal = takerBuyVolumenes.reduce((a,b)=>a+(Number.isFinite(b)?b:0),0);
+                const ratioTaker = volumenTotal > 0 ? takerBuyVolumenTotal / volumenTotal : 0.5;
 
                 // Construir objeto de métricas reales
                 const metrics = {
@@ -944,7 +949,7 @@
                     "Prop Vol Taker Buy / Vol": ratioTaker
                 };
 
-                // Ejecutar simulación con el dataset CORTADO
+                // Ejecutar simulación con el dataset invertido para reflejar el orden visual
                 const sim = simularMonteCarlo(datosParaCalculo, metrics);
                 const steps = 20;
 
