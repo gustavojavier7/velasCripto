@@ -1124,17 +1124,15 @@
                 currentTimeframe,
                 lookbackLength,
                 windowSize,
-                indicador,
                 estructuras,
                 datosParaCalculo
             }) {
-                const ultimoValor = [...indicador].reverse().find(v => v !== null);
                 const ultimasEstructuras = estructuras.slice(-10).reverse();
 
                 const lista = ultimasEstructuras.length > 0
                     ? ultimasEstructuras.map(est => `
                         <li>
-                            <strong>${est.tipo}</strong> 
+                            <strong>${est.tipo}</strong>
                             <span style="color:#666;">(${est.timestamp})</span><br>
                             → ${est.descripcion}
                             <br>
@@ -1147,67 +1145,70 @@
                     : '<li>Sin cruces Ramsey detectados en la ventana analizada.</li>';
 
                 return `
-                    <h1>Detección Ramsey</h1>
+                    <h1>Detección Ramsey - Señal en Precio</h1>
                     <p><b>TF:</b> ${currentTimeframe} | <b>Lookback:</b> ${lookbackLength} velas | <b>Ventana:</b> ${windowSize}</p>
 
-                    <div style="display:flex; gap:20px; flex-wrap:wrap; margin:15px 0;">
-                        <div style="flex:1; min-width:300px;">
-                            <canvas id="ramseyChart" width="600" height="300"></canvas>
-                        </div>
-
-                        <div style="flex:1; min-width:280px;">
-                            <div class="ramsey-legend">
-                                <span class="ramsey-legend-item"><span class="ramsey-legend-color" style="background:#d4edda"></span> Cruce alcista</span>
-                                <span class="ramsey-legend-item"><span class="ramsey-legend-color" style="background:#f8d7da"></span> Cruce bajista</span>
-                            </div>
-                            <h3>Últimos cruces detectados</h3>
-                            <ul class="ramsey-result-list">${lista}</ul>
-                        </div>
+                    <div style="margin:15px 0; height: 380px;">
+                        <canvas id="ramseyPriceChart" width="700" height="380"></canvas>
                     </div>
 
-                    <p style="margin-top:10px;color:#666; font-size:0.9em;">
-                        El gráfico muestra el indicador Ramsey. Los puntos rojos/azules marcan los cruces detectados.
+                    <div class="ramsey-legend">
+                        <span class="ramsey-legend-item"><span class="ramsey-legend-color" style="background:#22c55e"></span> Cruce Alcista (Posible Mínimo)</span>
+                        <span class="ramsey-legend-item"><span class="ramsey-legend-color" style="background:#ef4444"></span> Cruce Bajista (Posible Máximo)</span>
+                    </div>
+
+                    <h3>Señales Detectadas (${estructuras.length})</h3>
+                    <ul class="ramsey-result-list">${lista}</ul>
+
+                    <p style="margin-top:10px;color:#666;font-size:0.9em;">
+                        Los puntos en el gráfico marcan los cruces del indicador Ramsey sobre el precio real.
                     </p>
                 `;
             }
 
-            function crearGraficoRamsey(indicador, cruces, datosParaCalculo) {
-                const canvas = document.getElementById('ramseyChart');
+            function crearGraficoPrecioRamsey(datosParaCalculo, estructuras) {
+                const canvas = document.getElementById('ramseyPriceChart');
                 if (!canvas) return;
 
                 const ctx = canvas.getContext('2d');
 
-                const labels = indicador.map((_, i) => `V${i + 1}`);
-                const dataIndicador = indicador.map(v => v === null ? NaN : v);
+                const closes = datosParaCalculo.map(v => parseFloat(v[4]));
+                const labels = datosParaCalculo.map(v => formatearFecha(v[0]).slice(0, 16));
 
-                const crucesData = new Array(indicador.length).fill(NaN);
-                cruces.forEach(c => {
-                    crucesData[c.index] = indicador[c.index];
+                const crucesData = new Array(closes.length).fill(NaN);
+                const crucesColor = new Array(closes.length).fill('#22c55e');
+
+                estructuras.forEach(est => {
+                    const idx = est.index;
+                    if (idx < closes.length) {
+                        crucesData[idx] = closes[idx];
+                        crucesColor[idx] = est.clase.includes('bear') ? '#ef4444' : '#22c55e';
+                    }
                 });
 
-                if (window.ramseyChartInstance) window.ramseyChartInstance.destroy();
+                if (window.ramseyPriceChartInstance) window.ramseyPriceChartInstance.destroy();
 
-                window.ramseyChartInstance = new Chart(ctx, {
+                window.ramseyPriceChartInstance = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: labels,
+                        labels,
                         datasets: [
                             {
-                                label: 'Indicador Ramsey',
-                                data: dataIndicador,
-                                borderColor: '#4e79a7',
-                                backgroundColor: 'rgba(78, 121, 167, 0.1)',
-                                tension: 0.2,
+                                label: 'Precio Close',
+                                data: closes,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                                tension: 0.1,
                                 borderWidth: 2,
-                                pointRadius: 1
+                                pointRadius: 0
                             },
                             {
-                                label: 'Cruces Detectados',
+                                label: 'Señales Ramsey',
                                 data: crucesData,
                                 borderColor: 'transparent',
-                                backgroundColor: '#d62728',
-                                pointRadius: 6,
-                                pointHoverRadius: 8,
+                                backgroundColor: crucesColor,
+                                pointRadius: 7,
+                                pointHoverRadius: 10,
                                 pointStyle: 'circle',
                                 type: 'scatter'
                             }
@@ -1216,15 +1217,32 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
                         plugins: {
                             legend: { position: 'top' },
-                            tooltip: { mode: 'index', intersect: false }
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        if (ctx.dataset.label === 'Señales Ramsey') {
+                                            const idx = ctx.dataIndex;
+                                            const est = estructuras.find(e => e.index === idx);
+                                            return est ? `${est.tipo} - ${est.descripcion}` : '';
+                                        }
+                                        return `Precio: ${ctx.raw.toFixed(4)}`;
+                                    },
+                                    title: (items) => {
+                                        if (!items.length) return '';
+                                        const idx = items[0].dataIndex;
+                                        return labels[idx] || '';
+                                    }
+                                }
+                            }
                         },
                         scales: {
-                            y: { title: { display: true, text: 'Valor del Indicador' } },
+                            y: { title: { display: true, text: 'Precio (USDT)' } },
                             x: {
-                                title: { display: true, text: 'Vela (más reciente a la derecha)' },
-                                ticks: { maxTicksLimit: 20 }
+                                title: { display: true, text: 'Tiempo' },
+                                ticks: { maxTicksLimit: 15 }
                             }
                         }
                     }
@@ -1482,14 +1500,13 @@
                     currentTimeframe,
                     lookbackLength: datosParaCalculo.length,
                     windowSize,
-                    indicador,
                     estructuras,
                     datosParaCalculo
                 });
 
                 setTimeout(() => {
-                    crearGraficoRamsey(indicador, cruces, datosParaCalculo);
-                }, 100);
+                    crearGraficoPrecioRamsey(datosParaCalculo, estructuras);
+                }, 150);
 
                 document.body.scrollTop = 0;
                 document.documentElement.scrollTop = 0;
