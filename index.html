@@ -184,6 +184,56 @@
         #resultados {
             padding-bottom: 4px;
         }
+
+        /* === RESALTADOS RAMSEY EN TABLA === */
+        tr.ramsey-bull td {
+            background: #d4edda !important;
+        }
+
+        tr.ramsey-bear td {
+            background: #f8d7da !important;
+        }
+
+        tr.ramsey-reversal td {
+            background: #fff3cd !important;
+        }
+
+        tr.ramsey-vol td {
+            background: #d1ecf1 !important;
+        }
+
+        tr.ramsey-mark td {
+            outline: 2px solid #555;
+        }
+
+        /* === LEYENDA RAMSEY === */
+        .ramsey-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+
+        .ramsey-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ramsey-legend-color {
+            width: 18px;
+            height: 12px;
+            border: 1px solid #aaa;
+            display: inline-block;
+        }
+
+        .ramsey-result-list {
+            line-height: 1.6;
+            max-height: 240px;
+            overflow-y: auto;
+            padding-left: 20px;
+        }
     </style>
 </head>
 <body>
@@ -1014,6 +1064,114 @@
 
                 return {S0,promedio,subida,bajada,ic95:[p2_5,p97_5],var95,horizonteHoras};
             }
+
+            function limpiarResaltadosRamsey() {
+                const tbody = document.querySelector('#dataTable tbody');
+                if (!tbody) return;
+
+                Array.from(tbody.rows).forEach(row => {
+                    row.classList.remove(
+                        'ramsey-bull',
+                        'ramsey-bear',
+                        'ramsey-reversal',
+                        'ramsey-vol',
+                        'ramsey-mark'
+                    );
+                    row.removeAttribute('title');
+                });
+            }
+
+            function convertirCrucesRamseyAEstructuras(cruces) {
+                return cruces.map(cruce => {
+                    const esMaximo = cruce.tipo === 'posible_maximo';
+
+                    return {
+                        index: cruce.index,
+                        tipo: esMaximo ? 'Cruce Ramsey bajista' : 'Cruce Ramsey alcista',
+                        clase: esMaximo ? 'ramsey-bear' : 'ramsey-bull',
+                        descripcion: esMaximo
+                            ? 'Cruce por cero: posible agotamiento alcista / máximo local'
+                            : 'Cruce por cero: posible agotamiento bajista / mínimo local',
+                        valorPrevio: cruce.previo,
+                        valorActual: cruce.actual
+                    };
+                });
+            }
+
+            function aplicarResaltadosRamsey(estructuras, totalDatos) {
+                const tbody = document.querySelector('#dataTable tbody');
+                if (!tbody) return;
+
+                limpiarResaltadosRamsey();
+
+                estructuras.forEach(est => {
+                    const filaIndex = totalDatos - 1 - est.index;
+
+                    if (tbody.rows[filaIndex]) {
+                        tbody.rows[filaIndex].classList.add(est.clase, 'ramsey-mark');
+                        tbody.rows[filaIndex].title = est.descripcion;
+                    }
+                });
+            }
+
+            function generarResumenRamseyHTML({
+                currentTimeframe,
+                lookbackLength,
+                windowSize,
+                indicador,
+                estructuras
+            }) {
+                const ultimoValor = [...indicador].reverse().find(v => v !== null);
+                const ultimasEstructuras = estructuras.slice(-10).reverse();
+
+                const lista = ultimasEstructuras.length > 0
+                    ? ultimasEstructuras.map(est => `
+                        <li>
+                            <strong>${est.tipo}</strong>
+                            en vela #${est.index + 1}
+                            → ${est.descripcion}
+                            <br>
+                            <small>
+                                Valor previo: ${Number.isFinite(est.valorPrevio) ? est.valorPrevio.toFixed(4) : 'N/A'}
+                                |
+                                Valor actual: ${Number.isFinite(est.valorActual) ? est.valorActual.toFixed(4) : 'N/A'}
+                            </small>
+                        </li>
+                    `).join('')
+                    : '<li>Sin cruces Ramsey detectados en la ventana analizada.</li>';
+
+                return `
+                    <h1>Detección Ramsey</h1>
+
+                    <p><b>TF:</b> ${currentTimeframe}</p>
+                    <p><b>Lookback:</b> ${lookbackLength} velas</p>
+                    <p><b>Ventana Ramsey:</b> ${windowSize} velas</p>
+                    <p><b>Cruces detectados:</b> ${estructuras.length}</p>
+                    <p><b>Último valor del indicador:</b> ${ultimoValor !== undefined ? ultimoValor.toFixed(4) : 'N/A'}</p>
+
+                    <div class="ramsey-legend">
+                        <span class="ramsey-legend-item">
+                            <span class="ramsey-legend-color" style="background:#d4edda"></span>
+                            Cruce alcista / posible mínimo
+                        </span>
+                        <span class="ramsey-legend-item">
+                            <span class="ramsey-legend-color" style="background:#f8d7da"></span>
+                            Cruce bajista / posible máximo
+                        </span>
+                    </div>
+
+                    <h2>Últimos cruces detectados</h2>
+                    <ul class="ramsey-result-list">
+                        ${lista}
+                    </ul>
+
+                    <p style="margin-top:10px;color:#666;">
+                        Esta detección usa rachas, alternancia, densidad y cruce por cero del indicador Ramsey.
+                        Los colores resaltan en la tabla las velas asociadas a cruces detectados.
+                    </p>
+                `;
+            }
+
             ejecutarAnalisisBtn.addEventListener('click', () => {
                 const tipo = analysisSelect.value;
                 if (tipo === 'monteCarlo') {
