@@ -158,15 +158,19 @@
             min-height: 0;
             overflow: hidden;
             margin-top: 8px;
+            gap: 12px;
+            padding-bottom: 8px;
         }
         #resumenContainer {
             background: #f0f8f0;
             border: 2px solid #4caf50;
             border-radius: 8px;
             padding: 18px;
-            margin-bottom: 12px;
             box-shadow: 0 4px 15px rgba(76, 175, 80, 0.2);
             flex-shrink: 0;
+        }
+        #resultados {
+            padding-bottom: 4px;
         }
     </style>
 </head>
@@ -236,6 +240,9 @@
         </fieldset>
     </form>
     <div id="mainPanel">
+        <div id="resumenContainer" class="summary-panel">
+            <div id="resumen"></div>
+        </div>
         <div id="resultados">
             <p id="progresoPorcentual">0%</p>
             <p id="totalPares">Total de pares procesados: 0, Total de pares válidos: 0</p>
@@ -256,9 +263,6 @@
                 </thead>
                 <tbody></tbody>
             </table>
-        </div>
-        <div id="resumenContainer" class="summary-panel">
-            <div id="resumen"></div>
         </div>
     </div>
     <script>
