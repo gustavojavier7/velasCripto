@@ -1413,8 +1413,9 @@
                 const indicador = calcularIndicadorRamsey(datosParaCalculo, windowSize);
                 const cruces = detectarCrucesRamsey(indicador);
                 const estructuras = convertirCrucesRamseyAEstructuras(cruces);
+                const offsetGlobal = datosRaw.length - datosParaCalculo.length;
 
-                aplicarResaltadosRamsey(estructuras, datosParaCalculo.length);
+                aplicarResaltadosRamsey(estructuras, datosRaw.length, offsetGlobal);
 
                 resumenDiv.innerHTML = '<div id="resumen" style="padding:20px;"></div>';
                 resumenDiv.classList.add('show');
