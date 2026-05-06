@@ -1172,6 +1172,134 @@
                 `;
             }
 
+
+            function calcularIndicadorRamsey(datos, windowSize = 10) {
+                const n = datos.length;
+
+                const signs = datos.map(v => {
+                    const open = parseFloat(v[1]);
+                    const close = parseFloat(v[4]);
+
+                    if (close > open) return 1;
+                    if (close < open) return -1;
+                    return 0;
+                });
+
+                const indicador = new Array(n).fill(null);
+
+                for (let i = windowSize; i < n; i++) {
+                    const ventana = signs
+                        .slice(i - windowSize, i)
+                        .filter(v => v !== 0);
+
+                    if (ventana.length < 2) {
+                        indicador[i] = 0;
+                        continue;
+                    }
+
+                    let maxPos = 0;
+                    let maxNeg = 0;
+
+                    let signoActual = ventana[0];
+                    let rachaActual = 1;
+
+                    for (let j = 1; j < ventana.length; j++) {
+                        if (ventana[j] === signoActual) {
+                            rachaActual++;
+                        } else {
+                            if (signoActual === 1) maxPos = Math.max(maxPos, rachaActual);
+                            if (signoActual === -1) maxNeg = Math.max(maxNeg, rachaActual);
+
+                            signoActual = ventana[j];
+                            rachaActual = 1;
+                        }
+                    }
+
+                    if (signoActual === 1) maxPos = Math.max(maxPos, rachaActual);
+                    if (signoActual === -1) maxNeg = Math.max(maxNeg, rachaActual);
+
+                    let maxAnti = 1;
+                    let alternanciaActual = 1;
+
+                    for (let j = 1; j < ventana.length; j++) {
+                        if (ventana[j] !== ventana[j - 1]) {
+                            alternanciaActual++;
+                            maxAnti = Math.max(maxAnti, alternanciaActual);
+                        } else {
+                            alternanciaActual = 1;
+                        }
+                    }
+
+                    const posCount = ventana.filter(v => v === 1).length;
+                    const negCount = ventana.filter(v => v === -1).length;
+                    const total = ventana.length;
+
+                    const paresTotales = total * (total - 1) / 2;
+                    const paresIguales =
+                        (posCount * (posCount - 1) / 2) +
+                        (negCount * (negCount - 1) / 2);
+
+                    const density = paresTotales > 0 ? paresIguales / paresTotales : 0;
+
+                    let expRun = 1;
+
+                    if (density > 0 && density < 1) {
+                        if (density >= 0.5) {
+                            expRun = Math.log(total) / Math.log(1 / density);
+                        } else {
+                            expRun = Math.log(total) / Math.log(1 / (1 - density));
+                        }
+                    }
+
+                    const antiExp = total > 0 ? Math.log(total) / Math.log(2) : 1;
+
+                    const vio = expRun > 0
+                        ? (((maxPos + maxNeg) / 2) - expRun) / expRun
+                        : 0;
+
+                    const antiVio = antiExp > 0
+                        ? (maxAnti - antiExp) / antiExp
+                        : 0;
+
+                    indicador[i] = vio - 0.5 * antiVio;
+                }
+
+                return indicador;
+            }
+
+            function detectarCrucesRamsey(indicador) {
+                const cruces = [];
+
+                for (let i = 1; i < indicador.length; i++) {
+                    const previo = indicador[i - 1];
+                    const actual = indicador[i];
+
+                    if (previo === null || actual === null) continue;
+
+                    if (previo > 0 && actual <= 0) {
+                        cruces.push({
+                            index: i,
+                            tipo: 'posible_maximo',
+                            direccion: 'cruce_bajista',
+                            previo,
+                            actual
+                        });
+                    }
+
+                    if (previo < 0 && actual >= 0) {
+                        cruces.push({
+                            index: i,
+                            tipo: 'posible_minimo',
+                            direccion: 'cruce_alcista',
+                            previo,
+                            actual
+                        });
+                    }
+                }
+
+                return cruces;
+            }
+
             ejecutarAnalisisBtn.addEventListener('click', () => {
                 const tipo = analysisSelect.value;
                 if (tipo === 'monteCarlo') {
