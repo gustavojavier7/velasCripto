@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Reporte de Criptomonedas v1.1.5</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -1120,7 +1121,8 @@
                 lookbackLength,
                 windowSize,
                 indicador,
-                estructuras
+                estructuras,
+                datosParaCalculo
             }) {
                 const ultimoValor = [...indicador].reverse().find(v => v !== null);
                 const ultimasEstructuras = estructuras.slice(-10).reverse();
@@ -1143,34 +1145,87 @@
 
                 return `
                     <h1>Detección Ramsey</h1>
+                    <p><b>TF:</b> ${currentTimeframe} | <b>Lookback:</b> ${lookbackLength} velas | <b>Ventana:</b> ${windowSize}</p>
 
-                    <p><b>TF:</b> ${currentTimeframe}</p>
-                    <p><b>Lookback:</b> ${lookbackLength} velas</p>
-                    <p><b>Ventana Ramsey:</b> ${windowSize} velas</p>
-                    <p><b>Cruces detectados:</b> ${estructuras.length}</p>
-                    <p><b>Último valor del indicador:</b> ${ultimoValor !== undefined ? ultimoValor.toFixed(4) : 'N/A'}</p>
+                    <div style="display:flex; gap:20px; flex-wrap:wrap; margin:15px 0;">
+                        <div style="flex:1; min-width:300px;">
+                            <canvas id="ramseyChart" width="600" height="300"></canvas>
+                        </div>
 
-                    <div class="ramsey-legend">
-                        <span class="ramsey-legend-item">
-                            <span class="ramsey-legend-color" style="background:#d4edda"></span>
-                            Cruce alcista / posible mínimo
-                        </span>
-                        <span class="ramsey-legend-item">
-                            <span class="ramsey-legend-color" style="background:#f8d7da"></span>
-                            Cruce bajista / posible máximo
-                        </span>
+                        <div style="flex:1; min-width:280px;">
+                            <div class="ramsey-legend">
+                                <span class="ramsey-legend-item"><span class="ramsey-legend-color" style="background:#d4edda"></span> Cruce alcista</span>
+                                <span class="ramsey-legend-item"><span class="ramsey-legend-color" style="background:#f8d7da"></span> Cruce bajista</span>
+                            </div>
+                            <h3>Últimos cruces detectados</h3>
+                            <ul class="ramsey-result-list">${lista}</ul>
+                        </div>
                     </div>
 
-                    <h2>Últimos cruces detectados</h2>
-                    <ul class="ramsey-result-list">
-                        ${lista}
-                    </ul>
-
-                    <p style="margin-top:10px;color:#666;">
-                        Esta detección usa rachas, alternancia, densidad y cruce por cero del indicador Ramsey.
-                        Los colores resaltan en la tabla las velas asociadas a cruces detectados.
+                    <p style="margin-top:10px;color:#666; font-size:0.9em;">
+                        El gráfico muestra el indicador Ramsey. Los puntos rojos/azules marcan los cruces detectados.
                     </p>
                 `;
+            }
+
+            function crearGraficoRamsey(indicador, cruces, datosParaCalculo) {
+                const canvas = document.getElementById('ramseyChart');
+                if (!canvas) return;
+
+                const ctx = canvas.getContext('2d');
+
+                const labels = indicador.map((_, i) => `V${i + 1}`);
+                const dataIndicador = indicador.map(v => v === null ? NaN : v);
+
+                const crucesData = new Array(indicador.length).fill(NaN);
+                cruces.forEach(c => {
+                    crucesData[c.index] = indicador[c.index];
+                });
+
+                if (window.ramseyChartInstance) window.ramseyChartInstance.destroy();
+
+                window.ramseyChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Indicador Ramsey',
+                                data: dataIndicador,
+                                borderColor: '#4e79a7',
+                                backgroundColor: 'rgba(78, 121, 167, 0.1)',
+                                tension: 0.2,
+                                borderWidth: 2,
+                                pointRadius: 1
+                            },
+                            {
+                                label: 'Cruces Detectados',
+                                data: crucesData,
+                                borderColor: 'transparent',
+                                backgroundColor: '#d62728',
+                                pointRadius: 6,
+                                pointHoverRadius: 8,
+                                pointStyle: 'circle',
+                                type: 'scatter'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'top' },
+                            tooltip: { mode: 'index', intersect: false }
+                        },
+                        scales: {
+                            y: { title: { display: true, text: 'Valor del Indicador' } },
+                            x: {
+                                title: { display: true, text: 'Vela (más reciente a la derecha)' },
+                                ticks: { maxTicksLimit: 20 }
+                            }
+                        }
+                    }
+                });
             }
 
 
@@ -1425,8 +1480,13 @@
                     lookbackLength: datosParaCalculo.length,
                     windowSize,
                     indicador,
-                    estructuras
+                    estructuras,
+                    datosParaCalculo
                 });
+
+                setTimeout(() => {
+                    crearGraficoRamsey(indicador, cruces, datosParaCalculo);
+                }, 100);
 
                 document.body.scrollTop = 0;
                 document.documentElement.scrollTop = 0;
