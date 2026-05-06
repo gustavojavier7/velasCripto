@@ -112,6 +112,62 @@
         #progresoPorcentual, #totalPares {
             margin: 5px 0;
         }
+        /* === VISIBILIDAD DEL PANEL MONTE CARLO === */
+        .summary-panel {
+            display: none;
+        }
+        .summary-panel.show {
+            display: block;
+        }
+        /* === MODO COMPACTO PARA SIMULACIÓN MONTE CARLO === */
+        body.simulation-mode .header-info {
+            margin-bottom: 8px;
+            padding: 8px 12px;
+        }
+        body.simulation-mode .header-info h1 {
+            font-size: 18px;
+            margin: 4px 0;
+        }
+        body.simulation-mode .user-info {
+            display: none;
+        }
+        body.simulation-mode .selector {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #f9f9f9;
+            border-radius: 6px;
+        }
+        body.simulation-mode .selector fieldset:not(.actions) {
+            display: none;
+        }
+        body.simulation-mode .selector fieldset.actions {
+            margin: 0;
+            padding: 8px;
+            border: none;
+            background: transparent;
+        }
+        body.simulation-mode .selector button {
+            font-size: 14px;
+            padding: 8px 16px;
+        }
+        /* Asegurar que mainPanel tome todo el espacio restante */
+        #mainPanel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        #resumenContainer {
+            background: #f0f8f0;
+            border: 2px solid #4caf50;
+            border-radius: 8px;
+            padding: 18px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.2);
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -179,29 +235,31 @@
             <button type="button" id="toggleTabla" style="display:none;">Ver tabla de velas</button>
         </fieldset>
     </form>
-    <div id="resultados">
-        <p id="progresoPorcentual">0%</p>
-        <p id="totalPares">Total de pares procesados: 0, Total de pares válidos: 0</p>
-        <table id="dataTable">
-            <thead>
-                <tr>
-                    <th>Par</th>
-                    <th>Precio de Apertura</th>
-                    <th>Precio Máximo</th>
-                    <th>Precio Mínimo</th>
-                    <th>Precio de Cierre</th>
-                    <th>Volumen</th>
-                    <th>Número de Operaciones</th>
-                    <th>Variación Porcentual</th>
-                    <th>Timestamp</th>
-                    <th>Orden</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    </div>
-    <div id="resumenContainer" style="display:none; padding:10px; background:#f0f0f0; margin-top:20px;">
-        <div id="resumen"></div>
+    <div id="mainPanel">
+        <div id="resultados">
+            <p id="progresoPorcentual">0%</p>
+            <p id="totalPares">Total de pares procesados: 0, Total de pares válidos: 0</p>
+            <table id="dataTable">
+                <thead>
+                    <tr>
+                        <th>Par</th>
+                        <th>Precio de Apertura</th>
+                        <th>Precio Máximo</th>
+                        <th>Precio Mínimo</th>
+                        <th>Precio de Cierre</th>
+                        <th>Volumen</th>
+                        <th>Número de Operaciones</th>
+                        <th>Variación Porcentual</th>
+                        <th>Timestamp</th>
+                        <th>Orden</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div id="resumenContainer" class="summary-panel">
+            <div id="resumen"></div>
+        </div>
     </div>
     <script>
         const VERSION = '1.1.5';
@@ -349,17 +407,40 @@
                 document.getElementById('tituloReporte').textContent = nuevoTitulo;
                 document.title = nuevoTitulo;
             }
+            function activarModoSimulacion() {
+                document.body.classList.add('simulation-mode');
+                resultadosDiv.style.display = 'none';
+                resumenDiv.classList.add('show');
+                toggleTablaButton.style.display = 'inline-block';
+                toggleTablaButton.textContent = 'Ver tabla de velas';
+            }
+            function resetModoConsulta() {
+                document.body.classList.remove('simulation-mode');
+                resumenDiv.classList.remove('show');
+                resultadosDiv.style.display = 'flex';
+                toggleTablaButton.style.display = 'none';
+                toggleTablaButton.textContent = 'Ver tabla de velas';
+            }
+            function alternarTablaSimulacion() {
+                const tablaOculta = resultadosDiv.style.display === 'none';
+                if (tablaOculta) {
+                    resultadosDiv.style.display = 'flex';
+                    resumenDiv.classList.remove('show');
+                    toggleTablaButton.textContent = 'Volver a simulación';
+                } else {
+                    resultadosDiv.style.display = 'none';
+                    resumenDiv.classList.add('show');
+                    toggleTablaButton.textContent = 'Ver tabla de velas';
+                }
+            }
             consultaForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 const nuevoCodigoUnico = generarCodigoUnico();
                 currentDateTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
                 document.getElementById('currentDateTime').textContent = currentDateTime;
                 // Reset visual state
-                resumenDiv.style.display = 'none';
+                resetModoConsulta();
                 resumenDiv.innerHTML = '';
-                resultadosDiv.style.display = 'block';
-                toggleTablaButton.style.display = 'none';
-                toggleTablaButton.textContent = 'Ver tabla de velas';
                 mostrarCargando();
                 dataTable.innerHTML = '';
                 isMaximosMode = false;
@@ -378,7 +459,7 @@
                     ocultarCargando();
                     calcularResumenButton.style.display = action === 'candles' ? 'inline-block' : 'none';
                     toggleTablaButton.style.display = 'none';
-                    resultadosDiv.style.display = 'block';
+                    resultadosDiv.style.display = 'flex';
                 } catch (error) {
                     console.error('Error en la consulta:', error);
                     mostrarError(`Error: ${error.message}`);
@@ -908,6 +989,7 @@
                     alert('No hay datos de velas para analizar.');
                     return;
                 }
+                activarModoSimulacion();
 
                 // La tabla muestra datosRaw invertido. Asumimos que datosRaw está
                 // ordenado del más antiguo al más reciente (Binance API).
@@ -922,14 +1004,10 @@
                     return;
                 }
 
-                // Ocultar tabla y limpiar todo el cuerpo visual
-                resultadosDiv.style.display = 'none';
                 document.body.scrollTop = 0;
                 document.documentElement.scrollTop = 0;
                 resumenDiv.innerHTML = '<div id="resumen" style="padding:30px;font-family:monospace;"></div>';
-                resumenDiv.style.display = 'block';
-                toggleTablaButton.style.display = 'inline-block';
-                toggleTablaButton.textContent = 'Ver tabla de velas';
+                resumenDiv.classList.add('show');
 
                 // === MÉTRICAS REALES BASADAS EN EL DATASET CORTADO E INVERTIDO ===
 
@@ -997,15 +1075,7 @@
                 });
             });
 
-            toggleTablaButton.addEventListener('click', () => {
-                if (resultadosDiv.style.display === 'none') {
-                    resultadosDiv.style.display = 'block';
-                    toggleTablaButton.textContent = 'Ocultar tabla de velas';
-                } else {
-                    resultadosDiv.style.display = 'none';
-                    toggleTablaButton.textContent = 'Ver tabla de velas';
-                }
-            });
+            toggleTablaButton.addEventListener('click', alternarTablaSimulacion);
         });
     </script>
 </body>
