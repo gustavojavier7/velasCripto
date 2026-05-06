@@ -1264,7 +1264,46 @@
                     ventana.print();
                 });
                 } else if (tipo === 'ramsey') {
-                    alert('🔧 Detección Ramsey - En desarrollo.\n\nEsta funcionalidad se implementará próximamente.');
+                    if (datosRaw.length === 0) {
+                        alert('No hay datos de velas para analizar.');
+                        return;
+                    }
+
+                    // Mantener la misma ventana de análisis usada por el sistema.
+                    // Si ya tenés lookback dinámico de 24 hs, reemplazar LOOKBACK_SIZE por esa función.
+                    const LOOKBACK_SIZE = 480;
+                    const datosParaCalculo = datosRaw.slice(-LOOKBACK_SIZE);
+
+                    if (datosParaCalculo.length < 20) {
+                        alert('Se requieren al menos 20 velas para la detección Ramsey.');
+                        return;
+                    }
+
+                    activarModoSimulacion();
+
+                    const windowSize = 10;
+
+                    const indicador = calcularIndicadorRamsey(datosParaCalculo, windowSize);
+                    const cruces = detectarCrucesRamsey(indicador);
+                    const estructuras = convertirCrucesRamseyAEstructuras(cruces);
+
+                    aplicarResaltadosRamsey(estructuras, datosParaCalculo.length);
+
+                    resumenDiv.innerHTML = '<div id="resumen" style="padding:30px;font-family:monospace;"></div>';
+                    resumenDiv.classList.add('show');
+
+                    document.getElementById('resumen').innerHTML = generarResumenRamseyHTML({
+                        currentTimeframe,
+                        lookbackLength: datosParaCalculo.length,
+                        windowSize,
+                        indicador,
+                        estructuras
+                    });
+
+                    document.body.scrollTop = 0;
+                    document.documentElement.scrollTop = 0;
+
+                    return;
                 }
             });
 
