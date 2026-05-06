@@ -1082,12 +1082,16 @@
                 });
             }
 
-            function convertirCrucesRamseyAEstructuras(cruces) {
+            function convertirCrucesRamseyAEstructuras(cruces, datosParaCalculo) {
                 return cruces.map(cruce => {
                     const esMaximo = cruce.tipo === 'posible_maximo';
 
+                    const vela = datosParaCalculo[cruce.index];
+                    const timestamp = vela ? formatearFecha(vela[0]) : 'N/A';
+
                     return {
                         index: cruce.index,
+                        timestamp: timestamp,
                         tipo: esMaximo ? 'Cruce Ramsey bajista' : 'Cruce Ramsey alcista',
                         clase: esMaximo ? 'ramsey-bear' : 'ramsey-bull',
                         descripcion: esMaximo
@@ -1130,13 +1134,12 @@
                 const lista = ultimasEstructuras.length > 0
                     ? ultimasEstructuras.map(est => `
                         <li>
-                            <strong>${est.tipo}</strong>
-                            en vela #${est.index + 1}
+                            <strong>${est.tipo}</strong> 
+                            <span style="color:#666;">(${est.timestamp})</span><br>
                             → ${est.descripcion}
                             <br>
                             <small>
-                                Valor previo: ${Number.isFinite(est.valorPrevio) ? est.valorPrevio.toFixed(4) : 'N/A'}
-                                |
+                                Valor previo: ${Number.isFinite(est.valorPrevio) ? est.valorPrevio.toFixed(4) : 'N/A'} |
                                 Valor actual: ${Number.isFinite(est.valorActual) ? est.valorActual.toFixed(4) : 'N/A'}
                             </small>
                         </li>
@@ -1467,7 +1470,7 @@
                 const windowSize = 10;
                 const indicador = calcularIndicadorRamsey(datosParaCalculo, windowSize);
                 const cruces = detectarCrucesRamsey(indicador);
-                const estructuras = convertirCrucesRamseyAEstructuras(cruces);
+                const estructuras = convertirCrucesRamseyAEstructuras(cruces, datosParaCalculo);
                 const offsetGlobal = datosRaw.length - datosParaCalculo.length;
 
                 aplicarResaltadosRamsey(estructuras, datosRaw.length, offsetGlobal);
