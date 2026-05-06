@@ -1098,14 +1098,15 @@
                 });
             }
 
-            function aplicarResaltadosRamsey(estructuras, totalDatos) {
+            function aplicarResaltadosRamsey(estructuras, totalDatos, offset = 0) {
                 const tbody = document.querySelector('#dataTable tbody');
                 if (!tbody) return;
 
                 limpiarResaltadosRamsey();
 
                 estructuras.forEach(est => {
-                    const filaIndex = totalDatos - 1 - est.index;
+                    const indexGlobal = offset + est.index;
+                    const filaIndex = totalDatos - 1 - indexGlobal;
 
                     if (tbody.rows[filaIndex]) {
                         tbody.rows[filaIndex].classList.add(est.clase, 'ramsey-mark');
@@ -1414,8 +1415,9 @@
                     const indicador = calcularIndicadorRamsey(datosParaCalculo, windowSize);
                     const cruces = detectarCrucesRamsey(indicador);
                     const estructuras = convertirCrucesRamseyAEstructuras(cruces);
+                    const offset = datosRaw.length - datosParaCalculo.length;
 
-                    aplicarResaltadosRamsey(estructuras, datosParaCalculo.length);
+                    aplicarResaltadosRamsey(estructuras, datosRaw.length, offset);
 
                     resumenDiv.innerHTML = '<div id="resumen" style="padding:30px;font-family:monospace;"></div>';
                     resumenDiv.classList.add('show');
