@@ -1301,11 +1301,11 @@
                 return cruces;
             }
 
-            // ==================== LISTENER DE ANÁLISIS ====================
+            // ==================== LISTENER PRINCIPAL DE ANÁLISIS ====================
             ejecutarAnalisisBtn.addEventListener('click', () => {
                 const tipo = analysisSelect.value;
 
-                // Limpiar resaltados previos
+                // Limpiar resaltados previos de Ramsey
                 limpiarResaltadosRamsey();
 
                 if (tipo === 'monteCarlo') {
@@ -1416,7 +1416,7 @@
 
                 aplicarResaltadosRamsey(estructuras, datosParaCalculo.length);
 
-                resumenDiv.innerHTML = '<div id="resumen" style="padding:30px;font-family:monospace;"></div>';
+                resumenDiv.innerHTML = '<div id="resumen" style="padding:20px;"></div>';
                 resumenDiv.classList.add('show');
 
                 document.getElementById('resumen').innerHTML = generarResumenRamseyHTML({
