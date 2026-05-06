@@ -65,6 +65,17 @@
         th:nth-child(7), td:nth-child(7) { width: 10%; }
         th:nth-child(8), td:nth-child(8) { width: 10%; }
         th:nth-child(9), td:nth-child(9) { width: 10%; }
+        /* Análisis */
+        #analysisGroup {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #analysisLabel {
+            font-weight: 600;
+            color: #333;
+            white-space: nowrap;
+        }
         #cargandoDatos {
             font-weight: bold;
             color: red;
@@ -82,6 +93,7 @@
         }
         fieldset.actions {
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             align-items: center;
         }
@@ -235,7 +247,14 @@
             <button type="submit">Consultar</button>
             <button type="button" id="buscarMaximos" style="display:none;">Buscar Pares en Máximos</button>
             <button type="button" id="exportarCSV">Exportar CSV</button>
-            <button type="button" id="calcularResumen" style="display:none;">Simulación Monte Carlo</button>
+            <div id="analysisGroup" style="display:none;">
+                <label for="analysisSelect" id="analysisLabel">Análisis:</label>
+                <select id="analysisSelect">
+                    <option value="monteCarlo">Simulación Monte Carlo</option>
+                    <option value="ramsey">Detección Ramsey</option>
+                </select>
+                <button type="button" id="ejecutarAnalisis">Ejecutar análisis</button>
+            </div>
             <button type="button" id="toggleTabla" style="display:none;">Ver tabla de velas</button>
         </fieldset>
     </form>
@@ -323,7 +342,9 @@
             const resultadosDiv = document.getElementById('resultados');
             const buscarMaximosButton = document.getElementById('buscarMaximos');
             const exportarCSVButton = document.getElementById('exportarCSV');
-            const calcularResumenButton = document.getElementById('calcularResumen');
+            const analysisGroup = document.getElementById('analysisGroup');
+            const analysisSelect = document.getElementById('analysisSelect');
+            const ejecutarAnalisisBtn = document.getElementById('ejecutarAnalisis');
             const toggleTablaButton = document.getElementById('toggleTabla');
             const resumenDiv = document.getElementById('resumenContainer');
             let spotPares = [];
@@ -425,6 +446,9 @@
                 toggleTablaButton.style.display = 'none';
                 toggleTablaButton.textContent = 'Ver tabla de velas';
             }
+            function actualizarVisibilidadAnalisis(action) {
+                analysisGroup.style.display = action === 'candles' ? 'inline-flex' : 'none';
+            }
             function alternarTablaSimulacion() {
                 const tablaOculta = resultadosDiv.style.display === 'none';
                 if (tablaOculta) {
@@ -461,7 +485,7 @@
                     procesarDatos(datos, action, par);
                     actualizarTitulo(tipoReporte, par, intervalo, nuevoCodigoUnico, action, marketSelect.value);
                     ocultarCargando();
-                    calcularResumenButton.style.display = action === 'candles' ? 'inline-block' : 'none';
+                    actualizarVisibilidadAnalisis(action);
                     toggleTablaButton.style.display = 'none';
                     resultadosDiv.style.display = 'flex';
                 } catch (error) {
@@ -703,6 +727,7 @@
                 actualizarListaPares();
                 filtroInput.dispatchEvent(new Event('input'));
                 buscarMaximosButton.style.display = marketSelect.value === 'futures' && actionSelect.value === 'marketData' ? 'inline-block' : 'none';
+                actualizarVisibilidadAnalisis(actionSelect.value);
             });
             actionSelect.addEventListener('change', () => {
                 intervalContainer.style.display = actionSelect.value === 'candles' ? 'inline-block' : 'none';
@@ -719,6 +744,7 @@
                     errorMessage.style.display = 'none';
                 }
                 buscarMaximosButton.style.display = marketSelect.value === 'futures' && actionSelect.value === 'marketData' ? 'inline-block' : 'none';
+                actualizarVisibilidadAnalisis(actionSelect.value);
             });
             actionSelect.dispatchEvent(new Event('change'));
             buscarMaximosButton.addEventListener('click', () => {
@@ -988,7 +1014,9 @@
 
                 return {S0,promedio,subida,bajada,ic95:[p2_5,p97_5],var95,horizonteHoras};
             }
-            calcularResumenButton.addEventListener('click', () => {
+            ejecutarAnalisisBtn.addEventListener('click', () => {
+                const tipo = analysisSelect.value;
+                if (tipo === 'monteCarlo') {
                 if (datosRaw.length === 0) {
                     alert('No hay datos de velas para analizar.');
                     return;
@@ -1077,6 +1105,9 @@
                     ventana.document.close();
                     ventana.print();
                 });
+                } else if (tipo === 'ramsey') {
+                    alert('🔧 Detección Ramsey - En desarrollo.\n\nEsta funcionalidad se implementará próximamente.');
+                }
             });
 
             toggleTablaButton.addEventListener('click', alternarTablaSimulacion);
