@@ -1301,70 +1301,71 @@
                 return cruces;
             }
 
+            // ==================== LISTENER DE ANÁLISIS ====================
             ejecutarAnalisisBtn.addEventListener('click', () => {
                 const tipo = analysisSelect.value;
+
+                // Limpiar resaltados previos
+                limpiarResaltadosRamsey();
+
                 if (tipo === 'monteCarlo') {
+                    ejecutarMonteCarlo();
+                } else if (tipo === 'ramsey') {
+                    ejecutarDeteccionRamsey();
+                }
+            });
+
+            // ====================== MONTE CARLO (Función limpia) ======================
+            function ejecutarMonteCarlo() {
                 if (datosRaw.length === 0) {
                     alert('No hay datos de velas para analizar.');
                     return;
                 }
-                activarModoSimulacion();
 
-                // La tabla muestra datosRaw invertido. Asumimos que datosRaw está
-                // ordenado del más antiguo al más reciente (Binance API).
                 const LOOKBACK_SIZE = 480;
-                // 1) Quedarnos con las últimas 480 velas disponibles
                 const datosParaCalculoRecientes = datosRaw.slice(-LOOKBACK_SIZE);
-                // 2) Invertir para que la vela más reciente esté en el índice 0
                 const datosParaCalculo = datosParaCalculoRecientes.reverse();
-                // Si hay menos de 20 velas (steps de la simulación), no se puede calcular.
+
                 if (datosParaCalculo.length < 20) {
                     alert('Se requieren al menos 20 velas para la simulación.');
                     return;
                 }
+
+                activarModoSimulacion();
 
                 document.body.scrollTop = 0;
                 document.documentElement.scrollTop = 0;
                 resumenDiv.innerHTML = '<div id="resumen" style="padding:30px;font-family:monospace;"></div>';
                 resumenDiv.classList.add('show');
 
-                // === MÉTRICAS REALES BASADAS EN EL DATASET CORTADO E INVERTIDO ===
-
-                // Obtener series desde dataset invertido (datosParaCalculo[0] es la vela más reciente)
+                // Métricas
                 const closes = datosParaCalculo.map(v => parseFloat(v[4]));
                 const volumenes = datosParaCalculo.map(v => parseFloat(v[5]));
                 const takerBuyVolumenes = datosParaCalculo.map(v => parseFloat(v[9]));
 
-                // Calcular métricas principales
-                const precioMedio = closes.reduce((a,b)=>a+b,0)/closes.length;
+                const precioMedio = closes.reduce((a, b) => a + b, 0) / closes.length;
                 const emaSerie14 = calcularEMAserie(closes, 14);
                 const ema = emaSerie14 ? emaSerie14[closes.length - 1] : precioMedio;
                 const asimetria = calcularAsimetria(closes);
                 const curtosis = calcularCurtosis(closes);
-                
-                // La autocorrelación se calcula con un lag de 1 sobre los 480 datos para capturar el patrón de reversión.
-                // Aunque el nombre es "Auto Correlación 24h", el cálculo se hace sobre el lookback de 480 puntos.
                 const autocorr480 = calcularAutocorrelacion(closes, Math.min(1, closes.length - 1));
 
-                const volumenTotal = volumenes.reduce((a,b)=>a+(Number.isFinite(b)?b:0),0);
-                const takerBuyVolumenTotal = takerBuyVolumenes.reduce((a,b)=>a+(Number.isFinite(b)?b:0),0);
+                const volumenTotal = volumenes.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+                const takerBuyVolumenTotal = takerBuyVolumenes.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
                 const ratioTaker = volumenTotal > 0 ? takerBuyVolumenTotal / volumenTotal : 0.5;
 
-                // Construir objeto de métricas reales
                 const metrics = {
-                    "EMA": ema,
-                    "Pronóstico Lineal": precioMedio,
-                    "Curtosis": curtosis,
-                    "Asimetría Precios": asimetria,
-                    "Auto Correlación 24h": autocorr480,
-                    "Prop Vol Taker Buy / Vol": ratioTaker
+                    'EMA': ema,
+                    'Pronóstico Lineal': precioMedio,
+                    'Curtosis': curtosis,
+                    'Asimetría Precios': asimetria,
+                    'Auto Correlación 24h': autocorr480,
+                    'Prop Vol Taker Buy / Vol': ratioTaker
                 };
 
-                // Ejecutar simulación con el dataset invertido para reflejar el orden visual
                 const sim = simularMonteCarlo(datosParaCalculo, metrics);
                 const steps = 20;
 
-                // Generar HTML
                 const html = `
         <h1>Simulación Monte Carlo (${steps} velas - TF: ${currentTimeframe}) - Lookback: ${datosParaCalculo.length}</h1>
         <p><b>Horizonte total:</b> ${sim.horizonteHoras.toFixed(2)} horas</p>
@@ -1376,66 +1377,59 @@
         <p><b>Value at Risk (95%):</b> ${sim.var95.toFixed(2)} USDT</p>
         <p style="margin-top:10px;color:#666;">
             Esta simulación reemplaza los puntos de entrada tradicionales.
-            Los valores reflejan proyecciones probabilísticas sobre el horizonte equivalente.
         </p>
         <button id="exportarPDF">Exportar PDF</button>
     `;
+
                 document.getElementById('resumen').innerHTML = html;
 
-                // Exportar a PDF
                 document.getElementById('exportarPDF').addEventListener('click', () => {
                     const contenido = document.getElementById('resumen').innerHTML;
                     const ventana = window.open('', '', 'width=800,height=600');
-                    ventana.document.write('<html><head><title>Simulación Monte Carlo</title></head><body>');
-                    ventana.document.write(contenido);
-                    ventana.document.write('</body></html>');
+                    ventana.document.write('<html><head><title>Simulación Monte Carlo</title></head><body>' + contenido + '</body></html>');
                     ventana.document.close();
                     ventana.print();
                 });
-                } else if (tipo === 'ramsey') {
-                    if (datosRaw.length === 0) {
-                        alert('No hay datos de velas para analizar.');
-                        return;
-                    }
+            }
 
-                    // Mantener la misma ventana de análisis usada por el sistema.
-                    // Si ya tenés lookback dinámico de 24 hs, reemplazar LOOKBACK_SIZE por esa función.
-                    const LOOKBACK_SIZE = 480;
-                    const datosParaCalculo = datosRaw.slice(-LOOKBACK_SIZE);
-
-                    if (datosParaCalculo.length < 20) {
-                        alert('Se requieren al menos 20 velas para la detección Ramsey.');
-                        return;
-                    }
-
-                    activarModoSimulacion();
-
-                    const windowSize = 10;
-
-                    const indicador = calcularIndicadorRamsey(datosParaCalculo, windowSize);
-                    const cruces = detectarCrucesRamsey(indicador);
-                    const estructuras = convertirCrucesRamseyAEstructuras(cruces);
-                    const offset = datosRaw.length - datosParaCalculo.length;
-
-                    aplicarResaltadosRamsey(estructuras, datosRaw.length, offset);
-
-                    resumenDiv.innerHTML = '<div id="resumen" style="padding:30px;font-family:monospace;"></div>';
-                    resumenDiv.classList.add('show');
-
-                    document.getElementById('resumen').innerHTML = generarResumenRamseyHTML({
-                        currentTimeframe,
-                        lookbackLength: datosParaCalculo.length,
-                        windowSize,
-                        indicador,
-                        estructuras
-                    });
-
-                    document.body.scrollTop = 0;
-                    document.documentElement.scrollTop = 0;
-
+            // ====================== RAMSEY (Ya está bien, solo agregamos limpieza) ======================
+            function ejecutarDeteccionRamsey() {
+                if (datosRaw.length === 0) {
+                    alert('No hay datos de velas para analizar.');
                     return;
                 }
-            });
+
+                const LOOKBACK_SIZE = 480;
+                const datosParaCalculo = datosRaw.slice(-LOOKBACK_SIZE);
+
+                if (datosParaCalculo.length < 20) {
+                    alert('Se requieren al menos 20 velas para la detección Ramsey.');
+                    return;
+                }
+
+                activarModoSimulacion();
+
+                const windowSize = 10;
+                const indicador = calcularIndicadorRamsey(datosParaCalculo, windowSize);
+                const cruces = detectarCrucesRamsey(indicador);
+                const estructuras = convertirCrucesRamseyAEstructuras(cruces);
+
+                aplicarResaltadosRamsey(estructuras, datosParaCalculo.length);
+
+                resumenDiv.innerHTML = '<div id="resumen" style="padding:30px;font-family:monospace;"></div>';
+                resumenDiv.classList.add('show');
+
+                document.getElementById('resumen').innerHTML = generarResumenRamseyHTML({
+                    currentTimeframe,
+                    lookbackLength: datosParaCalculo.length,
+                    windowSize,
+                    indicador,
+                    estructuras
+                });
+
+                document.body.scrollTop = 0;
+                document.documentElement.scrollTop = 0;
+            }
 
             toggleTablaButton.addEventListener('click', alternarTablaSimulacion);
         });
