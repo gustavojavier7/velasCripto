@@ -29,11 +29,31 @@
     const n=+m[1],u=m[2],min=60000;
     return u==='m'?n*min:u==='h'?n*60*min:u==='d'?n*1440*min:u==='w'?n*10080*min:u==='M'?n*43200*min:null;
   };
+  const fmtDuration=ms=>{
+    if(!Number.isFinite(ms)) return 'N/D';
+    const sign=ms<0?'-':'';
+    let s=Math.round(Math.abs(ms)/1000);
+    const d=Math.floor(s/86400); s%=86400;
+    const h=Math.floor(s/3600); s%=3600;
+    const m=Math.floor(s/60); s%=60;
+    const parts=[];
+    if(d) parts.push(`${d} d`);
+    if(h) parts.push(`${h} h`);
+    if(m) parts.push(`${m} min`);
+    if(s || parts.length===0) parts.push(`${s} s`);
+    return sign+parts.slice(0,3).join(' ');
+  };
+  const candlesToTime=(candles,tf)=>{
+    const ms=tfMs(tf);
+    return ms&&Number.isFinite(candles)?fmtDuration(candles*ms):'N/D';
+  };
   const fmtRoot=(x,lastI,lastTs,tf)=>{
     if(x===null||!Number.isFinite(x)) return 'N/D';
-    const dv=x-lastI; if(dv<=0) return `fuera del futuro (Δ ${dv.toFixed(2)} velas)`;
-    const ms=tfMs(tf); if(!ms) return `+${dv.toFixed(2)} velas`;
-    return `+${dv.toFixed(2)} velas (~${new Date(lastTs+dv*ms).toLocaleString()})`;
+    const dv=x-lastI, ms=tfMs(tf);
+    const dt=ms?candlesToTime(dv,tf):'N/D';
+    if(dv<=0) return `fuera del futuro (Δ ${dv.toFixed(2)} velas = ${dt})`;
+    if(!ms) return `+${dv.toFixed(2)} velas`;
+    return `+${dv.toFixed(2)} velas = ${dt} (~${new Date(lastTs+dv*ms).toLocaleString()})`;
   };
   const build=(data,w)=>{
     const closes=data.map(v=>+v[4]), s=Array(data.length).fill(null);
@@ -84,19 +104,26 @@
       const abierta = vela && Number.isFinite(+vela[6]) ? Date.now() <= +vela[6] : null;
       return { etiqueta: ['g[-2]','g[-1]','g[0]'][idx], p, ts, abierta };
     });
+    const tfDuration=tfMs(currentTimeframe);
+    const regressionTime=candlesToTime(W,currentTimeframe);
+    const forecastTime=candlesToTime(H,currentTimeframe);
+    const oneStepTime=candlesToTime(1,currentTimeframe);
+    const lookbackTime=candlesToTime(data.length,currentTimeframe);
     const rfText=a.xr===null?'N/D — sin cambio de signo; Regula Falsi no aplica todavía':`raíz encerrada entre las dos últimas velas (x=${a.xr.toFixed(3)})`;
     const secanteText=fmtRoot(a.xs,u.i,lastTs,currentTimeframe);
     const iqiText=fmtRoot(a.xq,u.i,lastTs,currentTimeframe);
-    const dispersionText=a.spread===null?'N/D':a.spread.toFixed(3)+' velas';
+    const dispersionText=a.spread===null?'N/D':`${a.spread.toFixed(3)} velas = ${candlesToTime(a.spread,currentTimeframe)}`;
     const velaSerieText=ultimaVelaAbierta===null?'estado desconocido':ultimaVelaAbierta?'ABIERTA':'cerrada';
     const tsv = [
       'REPORTE\tCruce numérico: precio vs pronóstico lineal',
       'Campo\tValor',
       `Mercado\t${String(market).toUpperCase()}`,
       `Par\t${par}`,
-      `TF\t${currentTimeframe}`,
-      `Lookback\t${data.length}`,
-      `Regresión\t${W} velas`,
+      `TF\t${currentTimeframe} (${oneStepTime} por vela)`,
+      `Lookback\t${data.length} velas = ${lookbackTime}`,
+      `Ventana de regresión\t${W} velas = ${regressionTime}`,
+      `Pronóstico lineal\t1 paso = 1 vela = ${oneStepTime}`,
+      `Horizonte máximo de pronóstico de cruce\t${H} velas = ${forecastTime}`,
       `Estado\t${a.state}`,
       `Close\t${u.y.toFixed(4)}`,
       `Pronóstico 1 paso\t${u.p.toFixed(4)}`,
@@ -125,7 +152,11 @@
     resumenDiv.innerHTML='<div id="resumen" style="padding:20px;"></div>'; resumenDiv.classList.add('show');
     document.getElementById('resumen').innerHTML=`
       <h1>Cruce numérico: precio vs pronóstico lineal</h1>
-      <p><b>TF:</b> ${currentTimeframe} | <b>Lookback:</b> ${data.length} | <b>Regresión:</b> ${W} velas</p>
+      <p><b>TF:</b> ${currentTimeframe} — 1 vela = ${oneStepTime}</p>
+      <p><b>Lookback cargado:</b> ${data.length} velas = ${lookbackTime}</p>
+      <p><b>Ventana de regresión:</b> ${W} velas = ${regressionTime}</p>
+      <p><b>Pronóstico lineal:</b> 1 paso = 1 vela = ${oneStepTime}</p>
+      <p><b>Horizonte máximo de pronóstico de cruce:</b> ${H} velas = ${forecastTime}</p>
       <p><b>Estado:</b> ${a.state}</p>
       <p><b>Close:</b> ${u.y.toFixed(4)} | <b>Pronóstico 1 paso:</b> ${u.p.toFixed(4)} | <b>g(t):</b> ${u.g.toFixed(4)}</p>
       <p><b>Última vela de la serie:</b> ${velaSerieText}</p>
