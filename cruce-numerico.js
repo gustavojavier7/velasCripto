@@ -7,6 +7,62 @@
     const m=(n*sxy-sx*sy)/d, b=(sy-m*sx)/n;
     return {m,b,p:x=>b+m*x};
   };
+  const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+  const returnMoments=rs=>{
+    const v=rs.filter(Number.isFinite), n=v.length;
+    if(n<4) return null;
+    const mean=v.reduce((s,x)=>s+x,0)/n;
+    let m2=0,m3=0,m4=0;
+    for(const x of v){
+      const d=x-mean, d2=d*d;
+      m2+=d2; m3+=d2*d; m4+=d2*d2;
+    }
+    m2/=n; m3/=n; m4/=n;
+    if(!(m2>0)) return {vol:0,skew:0,kurtExcess:0};
+    const vol=Math.sqrt(m2);
+    return {
+      vol,
+      skew:m3/Math.pow(m2,1.5),
+      kurtExcess:m4/(m2*m2)-3
+    };
+  };
+  const percentileRank=(values,x)=>{
+    const v=values.filter(Number.isFinite);
+    if(!v.length||!Number.isFinite(x)) return null;
+    let less=0,equal=0;
+    const eps=Math.max(1e-12,Math.abs(x)*1e-12);
+    for(const y of v){
+      if(Math.abs(y-x)<=eps) equal++;
+      else if(y<x) less++;
+    }
+    return clamp((less+0.5*equal)/v.length,0,1);
+  };
+  const regimeMetrics=(data,w)=>{
+    const closes=data.map(v=>+v[4]);
+    const returns=[];
+    for(let i=1;i<closes.length;i++){
+      const a=closes[i-1], b=closes[i];
+      returns.push(a>0&&b>0?Math.log(b/a):NaN);
+    }
+    const rolling=[];
+    for(let end=w;end<=returns.length;end++){
+      const m=returnMoments(returns.slice(end-w,end));
+      if(m) rolling.push(m);
+    }
+    if(!rolling.length) return null;
+    const current=rolling[rolling.length-1];
+    const hist=rolling.slice(0,-1);
+    const volRisk=percentileRank(hist.map(x=>x.vol),current.vol);
+    const kurtTail=Math.max(0,current.kurtExcess);
+    const kurtRisk=percentileRank(hist.map(x=>Math.max(0,x.kurtExcess)),kurtTail);
+    const vr=volRisk===null?0.5:volRisk;
+    const kr=kurtRisk===null?0.5:kurtRisk;
+    const confidence=clamp(100*(1-(0.60*vr+0.40*kr)),0,100);
+    const torsion=clamp(Math.tanh(current.skew)*confidence,-100,100);
+    return {...current,volRisk:vr,kurtRisk:kr,confidence,torsion,samples:hist.length};
+  };
+  const confidenceLabel=x=>x>=80?'ALTA':x>=60?'MODERADA-ALTA':x>=40?'MEDIA':x>=20?'BAJA':'MUY BAJA';
+  const torsionLabel=x=>Math.abs(x)<5?'NEUTRA':x>0?'ALCISTA':'BAJISTA';
   const sec=(a,b)=>{
     if(!a||!b) return null; const d=b.g-a.g;
     if(!Number.isFinite(d)||Math.abs(d)<1e-12) return null;
@@ -150,6 +206,7 @@
     if(data.length<W+3){alert(`Se requieren al menos ${W+3} velas.`);return;}
     activarModoSimulacion();
     const r=build(data,W), a=analyze(r.s,H), cross=crossings(r.s), u=a.c, lastTs=+data[data.length-1][0];
+    const regime=regimeMetrics(data,W);
     const ultimaVelaAbierta = Number.isFinite(+data[data.length-1]?.[6]) ? Date.now() <= +data[data.length-1][6] : null;
     const ultimosTres = [a.a,a.b,a.c].map((p,idx) => {
       const vela = data[p.i];
@@ -195,6 +252,15 @@
       ? '1M usa meses calendario y timestamps reales de Binance; no se supone un mes fijo de 30 días.'
       : '';
     const velaSerieText=ultimaVelaAbierta===null?'estado desconocido':ultimaVelaAbierta?'ABIERTA':'cerrada';
+    const confidenceText=regime?regime.confidence.toFixed(1):'N/D';
+    const confidenceState=regime?confidenceLabel(regime.confidence):'N/D';
+    const torsionText=regime?`${regime.torsion>=0?'+':''}${regime.torsion.toFixed(1)}`:'N/D';
+    const torsionState=regime?torsionLabel(regime.torsion):'N/D';
+    const volatilityText=regime?`${(regime.vol*100).toFixed(4)}%`:'N/D';
+    const volatilityRiskText=regime?`${(regime.volRisk*100).toFixed(1)}%`:'N/D';
+    const kurtosisText=regime?regime.kurtExcess.toFixed(3):'N/D';
+    const kurtosisRiskText=regime?`${(regime.kurtRisk*100).toFixed(1)}%`:'N/D';
+    const skewText=regime?regime.skew.toFixed(3):'N/D';
     const tsv = [
       'REPORTE\tCruce numérico: precio vs pronóstico lineal',
       'Campo\tValor',
@@ -212,6 +278,17 @@
       `g(t)\t${u.g.toFixed(4)}`,
       `Próximo pronóstico lineal\t${Number.isFinite(r.next)?r.next.toFixed(4):'N/D'}`,
       `Última vela de la serie\t${velaSerieText}`,
+      '',
+      'RÉGIMEN Y TORSIÓN\tValor',
+      `Volatilidad por vela\t${volatilityText}`,
+      `Riesgo relativo por volatilidad\tpercentil ${volatilityRiskText}`,
+      `Exceso de curtosis\t${kurtosisText}`,
+      `Riesgo relativo por curtosis\tpercentil ${kurtosisRiskText}`,
+      `Confianza normalizada\t${confidenceText}/100 (${confidenceState})`,
+      `Asimetría de retornos\t${skewText}`,
+      `Torsión normalizada\t${torsionText}/100 (${torsionState})`,
+      `Fórmula confianza\t100 × [1 - (0.60 × percentil volatilidad + 0.40 × percentil curtosis positiva)]`,
+      `Fórmula torsión\ttanh(asimetría) × confianza`,
       '',
       'Punto\tTimestamp\tClose\tPronóstico\tg(t)\tVela',
       ...ultimosTres.map(x=>[
@@ -243,6 +320,15 @@
       <p><b>Estado:</b> ${a.state}</p>
       <p><b>Close:</b> ${u.y.toFixed(4)} | <b>Pronóstico 1 paso:</b> ${u.p.toFixed(4)} | <b>g(t):</b> ${u.g.toFixed(4)}</p>
       <p><b>Última vela de la serie:</b> ${velaSerieText}</p>
+      <div style="margin:14px 0;padding:12px;border:1px solid #ccc;border-radius:6px;">
+        <h3 style="margin-top:0;">Confianza y torsión</h3>
+        <p><b>Confianza normalizada:</b> ${confidenceText}/100 — ${confidenceState}</p>
+        <p><b>Volatilidad por vela:</b> ${volatilityText} | <b>riesgo relativo:</b> percentil ${volatilityRiskText}</p>
+        <p><b>Exceso de curtosis:</b> ${kurtosisText} | <b>riesgo relativo:</b> percentil ${kurtosisRiskText}</p>
+        <p><b>Asimetría de retornos:</b> ${skewText}</p>
+        <p><b>Torsión normalizada:</b> ${torsionText}/100 — ${torsionState}</p>
+        <p style="color:#666;font-size:.9em;margin-bottom:0;">Confianza = 100 × [1 − (60% riesgo por volatilidad + 40% riesgo por curtosis positiva)]. Torsión = tanh(asimetría) × confianza. Es un índice relativo al historial cargado del mismo timeframe, no una probabilidad de acierto.</p>
+      </div>
       <table><thead><tr><th>Punto</th><th>Timestamp</th><th>Close</th><th>Pronóstico</th><th>g(t)</th><th>Vela</th></tr></thead><tbody>
       ${ultimosTres.map(x=>`<tr><td>${x.etiqueta}</td><td>${x.ts}</td><td>${x.p.y.toFixed(4)}</td><td>${x.p.p.toFixed(4)}</td><td>${x.p.g.toFixed(4)}</td><td>${x.abierta===null?'N/D':x.abierta?'abierta':'cerrada'}</td></tr>`).join('')}
       </tbody></table>
