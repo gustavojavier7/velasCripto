@@ -58,8 +58,9 @@
     const vr=volRisk===null?0.5:volRisk;
     const kr=kurtRisk===null?0.5:kurtRisk;
     const confidence=clamp(100*(1-(0.60*vr+0.40*kr)),0,100);
-    const torsion=clamp(Math.tanh(current.skew)*confidence,-100,100);
-    return {...current,volRisk:vr,kurtRisk:kr,confidence,torsion,samples:hist.length};
+    const skewReliability=Math.exp(-1.5*Math.pow(kr,4));
+    const torsion=clamp(Math.tanh(current.skew)*confidence*skewReliability,-100,100);
+    return {...current,volRisk:vr,kurtRisk:kr,confidence,skewReliability,torsion,samples:hist.length};
   };
   const confidenceLabel=x=>x>=80?'ALTA':x>=60?'MODERADA-ALTA':x>=40?'MEDIA':x>=20?'BAJA':'MUY BAJA';
   const torsionLabel=x=>Math.abs(x)<5?'NEUTRA':x>0?'ALCISTA':'BAJISTA';
@@ -261,6 +262,7 @@
     const kurtosisText=regime?regime.kurtExcess.toFixed(3):'N/D';
     const kurtosisRiskText=regime?`${(regime.kurtRisk*100).toFixed(1)}%`:'N/D';
     const skewText=regime?regime.skew.toFixed(3):'N/D';
+    const skewReliabilityText=regime?`${(regime.skewReliability*100).toFixed(1)}%`:'N/D';
     const tsv = [
       'REPORTE\tCruce numérico: precio vs pronóstico lineal',
       'Campo\tValor',
@@ -286,9 +288,11 @@
       `Riesgo relativo por curtosis\tpercentil ${kurtosisRiskText}`,
       `Confianza normalizada\t${confidenceText}/100 (${confidenceState})`,
       `Asimetría de retornos\t${skewText}`,
-      `Torsión normalizada\t${torsionText}/100 (${torsionState})`,
+      `Fiabilidad direccional de asimetría\t${skewReliabilityText}`,
+      `Torsión normalizada ajustada\t${torsionText}/100 (${torsionState})`,
       `Fórmula confianza\t100 × [1 - (0.60 × percentil volatilidad + 0.40 × percentil curtosis positiva)]`,
-      `Fórmula torsión\ttanh(asimetría) × confianza`,
+      `Fórmula fiabilidad asimetría\texp(-1.5 × percentilCurtosis^4)`,
+      `Fórmula torsión\ttanh(asimetría) × confianza × fiabilidadAsimetría`,
       '',
       'Punto\tTimestamp\tClose\tPronóstico\tg(t)\tVela',
       ...ultimosTres.map(x=>[
@@ -326,8 +330,9 @@
         <p><b>Volatilidad por vela:</b> ${volatilityText} | <b>riesgo relativo:</b> percentil ${volatilityRiskText}</p>
         <p><b>Exceso de curtosis:</b> ${kurtosisText} | <b>riesgo relativo:</b> percentil ${kurtosisRiskText}</p>
         <p><b>Asimetría de retornos:</b> ${skewText}</p>
-        <p><b>Torsión normalizada:</b> ${torsionText}/100 — ${torsionState}</p>
-        <p style="color:#666;font-size:.9em;margin-bottom:0;">Confianza = 100 × [1 − (60% riesgo por volatilidad + 40% riesgo por curtosis positiva)]. Torsión = tanh(asimetría) × confianza. Es un índice relativo al historial cargado del mismo timeframe, no una probabilidad de acierto.</p>
+        <p><b>Fiabilidad direccional de la asimetría:</b> ${skewReliabilityText}</p>
+        <p><b>Torsión normalizada ajustada:</b> ${torsionText}/100 — ${torsionState}</p>
+        <p style="color:#666;font-size:.9em;margin-bottom:0;">Confianza = 100 × [1 − (60% riesgo por volatilidad + 40% riesgo por curtosis positiva)]. Fiabilidad direccional = exp(−1.5 × percentilCurtosis⁴). Torsión = tanh(asimetría) × confianza × fiabilidad direccional. Todo es continuo y relativo al historial cargado del mismo timeframe; no es una probabilidad de acierto.</p>
       </div>
       <table><thead><tr><th>Punto</th><th>Timestamp</th><th>Close</th><th>Pronóstico</th><th>g(t)</th><th>Vela</th></tr></thead><tbody>
       ${ultimosTres.map(x=>`<tr><td>${x.etiqueta}</td><td>${x.ts}</td><td>${x.p.y.toFixed(4)}</td><td>${x.p.p.toFixed(4)}</td><td>${x.p.g.toFixed(4)}</td><td>${x.abierta===null?'N/D':x.abierta?'abierta':'cerrada'}</td></tr>`).join('')}
