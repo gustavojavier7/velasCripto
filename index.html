@@ -2,8 +2,9 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Reporte de Criptomonedas v1.1.5</title>
+    <title>Reporte de Criptomonedas v1.2.0</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="./cruce-numerico.js"></script>
     <style>
         body {
             margin: 0;
@@ -185,61 +186,11 @@
         #resultados {
             padding-bottom: 4px;
         }
-
-        /* === RESALTADOS RAMSEY EN TABLA === */
-        tr.ramsey-bull td {
-            background: #d4edda !important;
-        }
-
-        tr.ramsey-bear td {
-            background: #f8d7da !important;
-        }
-
-        tr.ramsey-reversal td {
-            background: #fff3cd !important;
-        }
-
-        tr.ramsey-vol td {
-            background: #d1ecf1 !important;
-        }
-
-        tr.ramsey-mark td {
-            outline: 2px solid #555;
-        }
-
-        /* === LEYENDA RAMSEY === */
-        .ramsey-legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin: 12px 0;
-            font-size: 14px;
-        }
-
-        .ramsey-legend-item {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .ramsey-legend-color {
-            width: 18px;
-            height: 12px;
-            border: 1px solid #aaa;
-            display: inline-block;
-        }
-
-        .ramsey-result-list {
-            line-height: 1.6;
-            max-height: 240px;
-            overflow-y: auto;
-            padding-left: 20px;
-        }
     </style>
 </head>
 <body>
     <div class="header-info">
-        <h1 id="tituloReporte">Reporte de Criptomonedas v1.1.5</h1>
+        <h1 id="tituloReporte">Reporte de Criptomonedas v1.2.0</h1>
         <div class="user-info">
             <p>Usuario: <span id="currentUser"></span></p>
             <p>Fecha y Hora (UTC): <span id="currentDateTime"></span></p>
@@ -302,7 +253,7 @@
                 <label for="analysisSelect" id="analysisLabel">Análisis:</label>
                 <select id="analysisSelect">
                     <option value="monteCarlo">Simulación Monte Carlo</option>
-                    <option value="ramsey">Detección Ramsey</option>
+                    <option value="cruceNumerico">Cruce numérico: Secante / IQI / Regula Falsi</option>
                 </select>
                 <button type="button" id="ejecutarAnalisis">Ejecutar análisis</button>
             </div>
@@ -336,7 +287,8 @@
         </div>
     </div>
     <script>
-        const VERSION = '1.1.5';
+        const VERSION = '1.2.0';
+        // CHANGELOG v1.2.0 (2026-09-23): Reemplazo de Ramsey por indicador de cruce numérico con regresión lineal real, Secante, IQI y Regula Falsi.
         // CHANGELOG v1.1.5 (2025-11-05): Aplicado un lookback fijo de 480 velas para el cálculo de todas las métricas y la deriva histórica (mu y sigma) en la Simulación Monte Carlo, resolviendo el conflicto de horizontes temporales.
         // CHANGELOG v1.1.4 (2025-11-05): Implementación del Método Box-Muller para distribución normal en Monte Carlo. El sesgo 'bias' se añade al drift 'mu_adj'. Se corrigió el orden de definición de la variable 'bias' para evitar errores de ejecución.
         // CHANGELOG v1.1.3 (2025-08-02): Modificado cálculo de puntos de entrada para usar el timeframe actual en lugar de datos diarios fijos.
@@ -1030,7 +982,7 @@
                 const sigma_anual = sigma_periodo * Math.sqrt(N);
 
                 // Ajuste por métricas trabajando sobre valores anualizados
-                const fgap = (metrics["Pronóstico Lineal"] - metrics["EMA"]) / metrics["EMA"];
+                const fgap = (metrics["Precio Medio"] - metrics["EMA"]) / metrics["EMA"];
                 const bias = (metrics["Prop Vol Taker Buy / Vol"] - 0.5) * 1.0 ;
 				const C_control = 50;
                 const factor_confianza_bias = sigma_anual !== 0 ? C_control / sigma_anual : C_control;
@@ -1066,328 +1018,25 @@
                 return {S0,promedio,subida,bajada,ic95:[p2_5,p97_5],var95,horizonteHoras};
             }
 
-            function limpiarResaltadosRamsey() {
-                const tbody = document.querySelector('#dataTable tbody');
-                if (!tbody) return;
-
-                Array.from(tbody.rows).forEach(row => {
-                    row.classList.remove(
-                        'ramsey-bull',
-                        'ramsey-bear',
-                        'ramsey-reversal',
-                        'ramsey-vol',
-                        'ramsey-mark'
-                    );
-                    row.removeAttribute('title');
-                });
-            }
-
-            function convertirCrucesRamseyAEstructuras(cruces, datosParaCalculo) {
-                return cruces.map(cruce => {
-                    const esMaximo = cruce.tipo === 'posible_maximo';
-
-                    const vela = datosParaCalculo[cruce.index];
-                    const timestamp = vela ? formatearFecha(vela[0]) : 'N/A';
-
-                    return {
-                        index: cruce.index,
-                        timestamp: timestamp,
-                        tipo: esMaximo ? 'Cruce Ramsey bajista' : 'Cruce Ramsey alcista',
-                        clase: esMaximo ? 'ramsey-bear' : 'ramsey-bull',
-                        descripcion: esMaximo
-                            ? 'Cruce por cero: posible agotamiento alcista / máximo local'
-                            : 'Cruce por cero: posible agotamiento bajista / mínimo local',
-                        valorPrevio: cruce.previo,
-                        valorActual: cruce.actual
-                    };
-                });
-            }
-
-            function aplicarResaltadosRamsey(estructuras, totalDatos, offset = 0) {
-                const tbody = document.querySelector('#dataTable tbody');
-                if (!tbody) return;
-
-                limpiarResaltadosRamsey();
-
-                estructuras.forEach(est => {
-                    const indexGlobal = offset + est.index;
-                    const filaIndex = totalDatos - 1 - indexGlobal;
-
-                    if (tbody.rows[filaIndex]) {
-                        tbody.rows[filaIndex].classList.add(est.clase, 'ramsey-mark');
-                        tbody.rows[filaIndex].title = est.descripcion;
-                    }
-                });
-            }
-
-            function generarResumenRamseyHTML({
-                currentTimeframe,
-                lookbackLength,
-                windowSize,
-                estructuras,
-                datosParaCalculo
-            }) {
-                const ultimasEstructuras = estructuras.slice(-10).reverse();
-
-                const lista = ultimasEstructuras.length > 0
-                    ? ultimasEstructuras.map(est => `
-                        <li>
-                            <strong>${est.tipo}</strong>
-                            <span style="color:#666;">(${est.timestamp})</span><br>
-                            → ${est.descripcion}
-                            <br>
-                            <small>
-                                Valor previo: ${Number.isFinite(est.valorPrevio) ? est.valorPrevio.toFixed(4) : 'N/A'} |
-                                Valor actual: ${Number.isFinite(est.valorActual) ? est.valorActual.toFixed(4) : 'N/A'}
-                            </small>
-                        </li>
-                    `).join('')
-                    : '<li>Sin cruces Ramsey detectados en la ventana analizada.</li>';
-
-                return `
-                    <h1>Detección Ramsey - Señal en Precio</h1>
-                    <p><b>TF:</b> ${currentTimeframe} | <b>Lookback:</b> ${lookbackLength} velas | <b>Ventana:</b> ${windowSize}</p>
-
-                    <div style="margin:15px 0; height: 380px;">
-                        <canvas id="ramseyPriceChart" width="700" height="380"></canvas>
-                    </div>
-
-                    <div class="ramsey-legend">
-                        <span class="ramsey-legend-item"><span class="ramsey-legend-color" style="background:#22c55e"></span> Cruce Alcista (Posible Mínimo)</span>
-                        <span class="ramsey-legend-item"><span class="ramsey-legend-color" style="background:#ef4444"></span> Cruce Bajista (Posible Máximo)</span>
-                    </div>
-
-                    <h3>Señales Detectadas (${estructuras.length})</h3>
-                    <ul class="ramsey-result-list">${lista}</ul>
-
-                    <p style="margin-top:10px;color:#666;font-size:0.9em;">
-                        Los puntos en el gráfico marcan los cruces del indicador Ramsey sobre el precio real.
-                    </p>
-                `;
-            }
-
-            function crearGraficoPrecioRamsey(datosParaCalculo, estructuras) {
-                const canvas = document.getElementById('ramseyPriceChart');
-                if (!canvas) return;
-
-                const ctx = canvas.getContext('2d');
-
-                const closes = datosParaCalculo.map(v => parseFloat(v[4]));
-                const labels = datosParaCalculo.map(v => formatearFecha(v[0]).slice(0, 16));
-
-                const crucesData = new Array(closes.length).fill(NaN);
-                const crucesColor = new Array(closes.length).fill('#22c55e');
-
-                estructuras.forEach(est => {
-                    const idx = est.index;
-                    if (idx < closes.length) {
-                        crucesData[idx] = closes[idx];
-                        crucesColor[idx] = est.clase.includes('bear') ? '#ef4444' : '#22c55e';
-                    }
-                });
-
-                if (window.ramseyPriceChartInstance) window.ramseyPriceChartInstance.destroy();
-
-                window.ramseyPriceChartInstance = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels,
-                        datasets: [
-                            {
-                                label: 'Precio Close',
-                                data: closes,
-                                borderColor: '#3b82f6',
-                                backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                                tension: 0.1,
-                                borderWidth: 2,
-                                pointRadius: 0
-                            },
-                            {
-                                label: 'Señales Ramsey',
-                                data: crucesData,
-                                borderColor: 'transparent',
-                                backgroundColor: crucesColor,
-                                pointRadius: 7,
-                                pointHoverRadius: 10,
-                                pointStyle: 'circle',
-                                type: 'scatter'
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: { position: 'top' },
-                            tooltip: {
-                                callbacks: {
-                                    label: (ctx) => {
-                                        if (ctx.dataset.label === 'Señales Ramsey') {
-                                            const idx = ctx.dataIndex;
-                                            const est = estructuras.find(e => e.index === idx);
-                                            return est ? `${est.tipo} - ${est.descripcion}` : '';
-                                        }
-                                        return `Precio: ${ctx.raw.toFixed(4)}`;
-                                    },
-                                    title: (items) => {
-                                        if (!items.length) return '';
-                                        const idx = items[0].dataIndex;
-                                        return labels[idx] || '';
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: { title: { display: true, text: 'Precio (USDT)' } },
-                            x: {
-                                title: { display: true, text: 'Tiempo' },
-                                ticks: { maxTicksLimit: 15 }
-                            }
-                        }
-                    }
-                });
-            }
-
-
-            function calcularIndicadorRamsey(datos, windowSize = 10) {
-                const n = datos.length;
-
-                const signs = datos.map(v => {
-                    const open = parseFloat(v[1]);
-                    const close = parseFloat(v[4]);
-
-                    if (close > open) return 1;
-                    if (close < open) return -1;
-                    return 0;
-                });
-
-                const indicador = new Array(n).fill(null);
-
-                for (let i = windowSize; i < n; i++) {
-                    const ventana = signs
-                        .slice(i - windowSize, i)
-                        .filter(v => v !== 0);
-
-                    if (ventana.length < 2) {
-                        indicador[i] = 0;
-                        continue;
-                    }
-
-                    let maxPos = 0;
-                    let maxNeg = 0;
-
-                    let signoActual = ventana[0];
-                    let rachaActual = 1;
-
-                    for (let j = 1; j < ventana.length; j++) {
-                        if (ventana[j] === signoActual) {
-                            rachaActual++;
-                        } else {
-                            if (signoActual === 1) maxPos = Math.max(maxPos, rachaActual);
-                            if (signoActual === -1) maxNeg = Math.max(maxNeg, rachaActual);
-
-                            signoActual = ventana[j];
-                            rachaActual = 1;
-                        }
-                    }
-
-                    if (signoActual === 1) maxPos = Math.max(maxPos, rachaActual);
-                    if (signoActual === -1) maxNeg = Math.max(maxNeg, rachaActual);
-
-                    let maxAnti = 1;
-                    let alternanciaActual = 1;
-
-                    for (let j = 1; j < ventana.length; j++) {
-                        if (ventana[j] !== ventana[j - 1]) {
-                            alternanciaActual++;
-                            maxAnti = Math.max(maxAnti, alternanciaActual);
-                        } else {
-                            alternanciaActual = 1;
-                        }
-                    }
-
-                    const posCount = ventana.filter(v => v === 1).length;
-                    const negCount = ventana.filter(v => v === -1).length;
-                    const total = ventana.length;
-
-                    const paresTotales = total * (total - 1) / 2;
-                    const paresIguales =
-                        (posCount * (posCount - 1) / 2) +
-                        (negCount * (negCount - 1) / 2);
-
-                    const density = paresTotales > 0 ? paresIguales / paresTotales : 0;
-
-                    let expRun = 1;
-
-                    if (density > 0 && density < 1) {
-                        if (density >= 0.5) {
-                            expRun = Math.log(total) / Math.log(1 / density);
-                        } else {
-                            expRun = Math.log(total) / Math.log(1 / (1 - density));
-                        }
-                    }
-
-                    const antiExp = total > 0 ? Math.log(total) / Math.log(2) : 1;
-
-                    const vio = expRun > 0
-                        ? (((maxPos + maxNeg) / 2) - expRun) / expRun
-                        : 0;
-
-                    const antiVio = antiExp > 0
-                        ? (maxAnti - antiExp) / antiExp
-                        : 0;
-
-                    indicador[i] = vio - 0.5 * antiVio;
-                }
-
-                return indicador;
-            }
-
-            function detectarCrucesRamsey(indicador) {
-                const cruces = [];
-
-                for (let i = 1; i < indicador.length; i++) {
-                    const previo = indicador[i - 1];
-                    const actual = indicador[i];
-
-                    if (previo === null || actual === null) continue;
-
-                    if (previo > 0 && actual <= 0) {
-                        cruces.push({
-                            index: i,
-                            tipo: 'posible_maximo',
-                            direccion: 'cruce_bajista',
-                            previo,
-                            actual
-                        });
-                    }
-
-                    if (previo < 0 && actual >= 0) {
-                        cruces.push({
-                            index: i,
-                            tipo: 'posible_minimo',
-                            direccion: 'cruce_alcista',
-                            previo,
-                            actual
-                        });
-                    }
-                }
-
-                return cruces;
-            }
-
             // ==================== LISTENER PRINCIPAL DE ANÁLISIS ====================
             ejecutarAnalisisBtn.addEventListener('click', () => {
                 const tipo = analysisSelect.value;
 
-                // Limpiar resaltados previos de Ramsey
-                limpiarResaltadosRamsey();
-
                 if (tipo === 'monteCarlo') {
                     ejecutarMonteCarlo();
-                } else if (tipo === 'ramsey') {
-                    ejecutarDeteccionRamsey();
+                } else if (tipo === 'cruceNumerico') {
+                    if (!window.CruceNumerico) {
+                        alert('No se pudo cargar el módulo de cruce numérico.');
+                        return;
+                    }
+
+                    window.CruceNumerico.run({
+                        datosRaw,
+                        currentTimeframe,
+                        resumenDiv,
+                        activarModoSimulacion,
+                        formatearFecha
+                    });
                 }
             });
 
@@ -1432,7 +1081,7 @@
 
                 const metrics = {
                     'EMA': ema,
-                    'Pronóstico Lineal': precioMedio,
+                    'Precio Medio': precioMedio,
                     'Curtosis': curtosis,
                     'Asimetría Precios': asimetria,
                     'Auto Correlación 24h': autocorr480,
@@ -1466,50 +1115,6 @@
                     ventana.document.close();
                     ventana.print();
                 });
-            }
-
-            // ====================== RAMSEY (Ya está bien, solo agregamos limpieza) ======================
-            function ejecutarDeteccionRamsey() {
-                if (datosRaw.length === 0) {
-                    alert('No hay datos de velas para analizar.');
-                    return;
-                }
-
-                const LOOKBACK_SIZE = 480;
-                const datosParaCalculo = datosRaw.slice(-LOOKBACK_SIZE);
-
-                if (datosParaCalculo.length < 20) {
-                    alert('Se requieren al menos 20 velas para la detección Ramsey.');
-                    return;
-                }
-
-                activarModoSimulacion();
-
-                const windowSize = 10;
-                const indicador = calcularIndicadorRamsey(datosParaCalculo, windowSize);
-                const cruces = detectarCrucesRamsey(indicador);
-                const estructuras = convertirCrucesRamseyAEstructuras(cruces, datosParaCalculo);
-                const offsetGlobal = datosRaw.length - datosParaCalculo.length;
-
-                aplicarResaltadosRamsey(estructuras, datosRaw.length, offsetGlobal);
-
-                resumenDiv.innerHTML = '<div id="resumen" style="padding:20px;"></div>';
-                resumenDiv.classList.add('show');
-
-                document.getElementById('resumen').innerHTML = generarResumenRamseyHTML({
-                    currentTimeframe,
-                    lookbackLength: datosParaCalculo.length,
-                    windowSize,
-                    estructuras,
-                    datosParaCalculo
-                });
-
-                setTimeout(() => {
-                    crearGraficoPrecioRamsey(datosParaCalculo, estructuras);
-                }, 150);
-
-                document.body.scrollTop = 0;
-                document.documentElement.scrollTop = 0;
             }
 
             toggleTablaButton.addEventListener('click', alternarTablaSimulacion);
