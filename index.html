@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Reporte de Criptomonedas v1.2.1</title>
+    <title>Reporte de Criptomonedas v1.2.2</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="./cruce-numerico.js"></script>
     <style>
@@ -197,7 +197,7 @@
 </head>
 <body>
     <div class="header-info">
-        <h1 id="tituloReporte">Reporte de Criptomonedas v1.2.1</h1>
+        <h1 id="tituloReporte">Reporte de Criptomonedas v1.2.2</h1>
         <div class="user-info">
             <p>Usuario: <span id="currentUser"></span></p>
             <p>Fecha y Hora (UTC): <span id="currentDateTime"></span></p>
@@ -293,7 +293,8 @@
         </div>
     </div>
     <script>
-        const VERSION = '1.2.1';
+        const VERSION = '1.2.2';
+        // CHANGELOG v1.2.2 (2026-09-23): Exportación tabulada al portapapeles del reporte de cruce numérico.
         // CHANGELOG v1.2.1 (2026-09-23): Vista exclusiva de análisis; controles de consulta siempre visibles; al analizar se liberan tabla y datos de velas y se exige una nueva consulta.
         // CHANGELOG v1.2.0 (2026-09-23): Reemplazo de Ramsey por indicador de cruce numérico con regresión lineal real, Secante, IQI y Regula Falsi.
         // CHANGELOG v1.1.5 (2025-11-05): Aplicado un lookback fijo de 480 velas para el cálculo de todas las métricas y la deriva histórica (mu y sigma) en la Simulación Monte Carlo, resolviendo el conflicto de horizontes temporales.
@@ -1039,7 +1040,9 @@
                         currentTimeframe,
                         resumenDiv,
                         activarModoSimulacion,
-                        formatearFecha
+                        formatearFecha,
+                        par: parSelect.value,
+                        market: marketSelect.value
                     });
                 }
             });
