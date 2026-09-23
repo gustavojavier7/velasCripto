@@ -472,9 +472,11 @@
                 const nuevoCodigoUnico = generarCodigoUnico();
                 currentDateTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
                 document.getElementById('currentDateTime').textContent = currentDateTime;
-                // Reset visual state
+                // Reset visual state: ninguna consulta reutiliza velas anteriores.
                 resetModoConsulta();
                 resumenDiv.innerHTML = '';
+                datosRaw = [];
+                analysisGroup.style.display = 'none';
                 mostrarCargando();
                 dataTable.innerHTML = '';
                 isMaximosMode = false;
