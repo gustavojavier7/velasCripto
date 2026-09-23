@@ -163,8 +163,12 @@
     const regressionTime=monthlyTf && Number.isFinite(regressionStartTs)
       ? fmtDuration(lastTs-regressionStartTs)
       : candlesToTime(W,currentTimeframe,lastTs);
+    const oneStepTargetTs=shiftByTfUnits(lastTs,1,currentTimeframe);
+    const forecastTargetTs=shiftByTfUnits(lastTs,H,currentTimeframe);
     const forecastTime=candlesToTime(H,currentTimeframe,lastTs);
     const oneStepTime=candlesToTime(1,currentTimeframe,lastTs);
+    const oneStepTargetText=Number.isFinite(oneStepTargetTs)?new Date(oneStepTargetTs).toLocaleString():'N/D';
+    const forecastTargetText=Number.isFinite(forecastTargetTs)?new Date(forecastTargetTs).toLocaleString():'N/D';
     const lookbackTime=monthlyTf && Number.isFinite(lookbackStartTs)
       ? fmtDuration(lastTs-lookbackStartTs)
       : candlesToTime(data.length,currentTimeframe,lastTs);
@@ -196,11 +200,11 @@
       'Campo\tValor',
       `Mercado\t${String(market).toUpperCase()}`,
       `Par\t${par}`,
-      `TF\t${currentTimeframe} (${oneStepTime} por vela)`,
+      `TF\t${monthlyTf?`${currentTimeframe} (mes calendario variable)`:`${currentTimeframe} (${oneStepTime} por vela)`}`,
       `Lookback\t${monthlyTf?`${data.length} velas calendario; span entre aperturas = ${lookbackTime}`:`${data.length} velas = ${lookbackTime}`}`,
       `Ventana de regresión\t${W} velas = ${regressionTime}`,
-      `Pronóstico lineal\t1 paso = 1 vela = ${oneStepTime}`,
-      `Horizonte máximo de pronóstico de cruce\t${H} velas = ${forecastTime}`,
+      `Pronóstico lineal\t${monthlyTf?`1 paso = próxima vela calendario: ${oneStepTime}; objetivo ${oneStepTargetText}`:`1 paso = 1 vela = ${oneStepTime}`}`,
+      `Horizonte máximo de pronóstico de cruce\t${H} velas = ${forecastTime}${monthlyTf?`; objetivo calendario ${forecastTargetText}`:''}`,
       ...(monthlyNote?[`Nota temporal\t${monthlyNote}`]:[]),
       `Estado\t${a.state}`,
       `Close\t${u.y.toFixed(4)}`,
@@ -230,11 +234,11 @@
     resumenDiv.innerHTML='<div id="resumen" style="padding:20px;"></div>'; resumenDiv.classList.add('show');
     document.getElementById('resumen').innerHTML=`
       <h1>Cruce numérico: precio vs pronóstico lineal</h1>
-      <p><b>TF:</b> ${currentTimeframe} — 1 vela = ${oneStepTime}</p>
+      <p><b>TF:</b> ${monthlyTf?`${currentTimeframe} — mes calendario variable`:`${currentTimeframe} — 1 vela = ${oneStepTime}`}</p>
       <p><b>Lookback cargado:</b> ${monthlyTf?`${data.length} velas calendario; span entre aperturas = ${lookbackTime}`:`${data.length} velas = ${lookbackTime}`}</p>
       <p><b>Ventana de regresión:</b> ${W} velas = ${regressionTime}</p>
-      <p><b>Pronóstico lineal:</b> 1 paso = 1 vela = ${oneStepTime}</p>
-      <p><b>Horizonte máximo de pronóstico de cruce:</b> ${H} velas = ${forecastTime}</p>
+      <p><b>Pronóstico lineal:</b> ${monthlyTf?`1 paso = próxima vela calendario: ${oneStepTime} (objetivo ${oneStepTargetText})`:`1 paso = 1 vela = ${oneStepTime}`}</p>
+      <p><b>Horizonte máximo de pronóstico de cruce:</b> ${H} velas = ${forecastTime}${monthlyTf?` (objetivo calendario ${forecastTargetText})`:''}</p>
       ${monthlyNote?`<p style="color:#666;"><b>Nota 1M:</b> ${monthlyNote}</p>`:''}
       <p><b>Estado:</b> ${a.state}</p>
       <p><b>Close:</b> ${u.y.toFixed(4)} | <b>Pronóstico 1 paso:</b> ${u.p.toFixed(4)} | <b>g(t):</b> ${u.g.toFixed(4)}</p>
