@@ -73,10 +73,17 @@
     ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{y:{title:{display:true,text:'Precio'}},x:{ticks:{maxTicksLimit:15}}}}});
   };
   const run=({datosRaw,currentTimeframe,resumenDiv,activarModoSimulacion,formatearFecha})=>{
-    const LOOKBACK=480,W=48,H=12,data=datosRaw.slice(-LOOKBACK);
+    const LOOKBACK=1000,W=48,H=12,data=datosRaw.slice(-LOOKBACK);
     if(data.length<W+3){alert(`Se requieren al menos ${W+3} velas.`);return;}
     activarModoSimulacion();
     const r=build(data,W), a=analyze(r.s,H), cross=crossings(r.s), u=a.c, lastTs=+data[data.length-1][0];
+    const ultimaVelaAbierta = Number.isFinite(+data[data.length-1]?.[6]) ? Date.now() <= +data[data.length-1][6] : null;
+    const ultimosTres = [a.a,a.b,a.c].map((p,idx) => {
+      const vela = data[p.i];
+      const ts = vela ? (formatearFecha ? formatearFecha(vela[0]) : new Date(+vela[0]).toLocaleString()) : 'N/D';
+      const abierta = vela && Number.isFinite(+vela[6]) ? Date.now() <= +vela[6] : null;
+      return { etiqueta: ['g[-2]','g[-1]','g[0]'][idx], p, ts, abierta };
+    });
     const rfText=a.xr===null?'N/D — sin cambio de signo; Regula Falsi no aplica todavía':`raíz encerrada entre las dos últimas velas (x=${a.xr.toFixed(3)})`;
     const direction=u.g>0?'Precio sobre la línea; un cruce futuro implica convergencia hacia abajo.':u.g<0?'Precio bajo la línea; un cruce futuro implica convergencia hacia arriba.':'Precio sobre la línea.';
     resumenDiv.innerHTML='<div id="resumen" style="padding:20px;"></div>'; resumenDiv.classList.add('show');
@@ -85,6 +92,10 @@
       <p><b>TF:</b> ${currentTimeframe} | <b>Lookback:</b> ${data.length} | <b>Regresión:</b> ${W} velas</p>
       <p><b>Estado:</b> ${a.state}</p>
       <p><b>Close:</b> ${u.y.toFixed(4)} | <b>Pronóstico 1 paso:</b> ${u.p.toFixed(4)} | <b>g(t):</b> ${u.g.toFixed(4)}</p>
+      <p><b>Última vela de la serie:</b> ${ultimaVelaAbierta===null?'estado desconocido':ultimaVelaAbierta?'ABIERTA':'cerrada'}</p>
+      <table><thead><tr><th>Punto</th><th>Timestamp</th><th>Close</th><th>Pronóstico</th><th>g(t)</th><th>Vela</th></tr></thead><tbody>
+      ${ultimosTres.map(x=>`<tr><td>${x.etiqueta}</td><td>${x.ts}</td><td>${x.p.y.toFixed(4)}</td><td>${x.p.p.toFixed(4)}</td><td>${x.p.g.toFixed(4)}</td><td>${x.abierta===null?'N/D':x.abierta?'abierta':'cerrada'}</td></tr>`).join('')}
+      </tbody></table>
       <p><b>Próximo pronóstico lineal:</b> ${Number.isFinite(r.next)?r.next.toFixed(4):'N/D'}</p>
       <p>${direction}</p>
       <table><thead><tr><th>Método</th><th>Estimación</th><th>Rol</th></tr></thead><tbody>
