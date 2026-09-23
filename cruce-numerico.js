@@ -24,16 +24,89 @@
     if(!a||!b||!Number.isFinite(a.g)||!Number.isFinite(b.g)||a.g*b.g>0) return null;
     return sec(a,b);
   };
+  const parseTf=tf=>{
+    const m=String(tf||'').match(/^(\d+)([mhdwM])$/);
+    return m?{n:+m[1],u:m[2]}:null;
+  };
+  const isCalendarMonthTf=tf=>{
+    const p=parseTf(tf);
+    return !!p && p.u==='M';
+  };
   const tfMs=tf=>{
-    const m=String(tf||'').match(/^(\d+)([mhdwM])$/); if(!m) return null;
-    const n=+m[1],u=m[2],min=60000;
-    return u==='m'?n*min:u==='h'?n*60*min:u==='d'?n*1440*min:u==='w'?n*10080*min:u==='M'?n*43200*min:null;
+    const p=parseTf(tf); if(!p || p.u==='M') return null;
+    const {n,u}=p,min=60000;
+    return u==='m'?n*min:u==='h'?n*60*min:u==='d'?n*1440*min:u==='w'?n*10080*min:null;
+  };
+  const addCalendarMonthsUtc=(ts,months)=>{
+    if(!Number.isFinite(ts)||!Number.isInteger(months)) return NaN;
+    const d=new Date(ts);
+    const day=d.getUTCDate();
+    const first=new Date(Date.UTC(
+      d.getUTCFullYear(),
+      d.getUTCMonth()+months,
+      1,
+      d.getUTCHours(),
+      d.getUTCMinutes(),
+      d.getUTCSeconds(),
+      d.getUTCMilliseconds()
+    ));
+    const maxDay=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
+    first.setUTCDate(Math.min(day,maxDay));
+    return first.getTime();
+  };
+  const shiftByTfUnits=(baseTs,units,tf)=>{
+    if(!Number.isFinite(baseTs)||!Number.isFinite(units)) return NaN;
+    const fixed=tfMs(tf);
+    if(fixed) return baseTs+units*fixed;
+    const p=parseTf(tf);
+    if(!p||p.u!=='M') return NaN;
+    const monthUnits=units*p.n;
+    if(monthUnits===0) return baseTs;
+    if(monthUnits>0){
+      const whole=Math.floor(monthUnits), frac=monthUnits-whole;
+      const a=addCalendarMonthsUtc(baseTs,whole);
+      if(frac===0) return a;
+      const b=addCalendarMonthsUtc(baseTs,whole+1);
+      return a+frac*(b-a);
+    }
+    const whole=Math.ceil(monthUnits), frac=Math.abs(monthUnits-whole);
+    const a=addCalendarMonthsUtc(baseTs,whole);
+    if(frac===0) return a;
+    const b=addCalendarMonthsUtc(baseTs,whole-1);
+    return a+frac*(b-a);
+  };
+  const fmtDuration=ms=>{
+    if(!Number.isFinite(ms)) return 'N/D';
+    const sign=ms<0?'-':'';
+    let s=Math.round(Math.abs(ms)/1000);
+    const d=Math.floor(s/86400); s%=86400;
+    const h=Math.floor(s/3600); s%=3600;
+    const m=Math.floor(s/60); s%=60;
+    const parts=[];
+    if(d) parts.push(`${d} d`);
+    if(h) parts.push(`${h} h`);
+    if(m) parts.push(`${m} min`);
+    if(s || parts.length===0) parts.push(`${s} s`);
+    return sign+parts.slice(0,3).join(' ');
+  };
+  const candlesToTime=(candles,tf,anchorTs)=>{
+    if(!Number.isFinite(candles)) return 'N/D';
+    const fixed=tfMs(tf);
+    if(fixed) return fmtDuration(candles*fixed);
+    if(isCalendarMonthTf(tf)&&Number.isFinite(anchorTs)){
+      const target=shiftByTfUnits(anchorTs,candles,tf);
+      return Number.isFinite(target)?fmtDuration(target-anchorTs):'N/D';
+    }
+    return 'N/D';
   };
   const fmtRoot=(x,lastI,lastTs,tf)=>{
     if(x===null||!Number.isFinite(x)) return 'N/D';
-    const dv=x-lastI; if(dv<=0) return `fuera del futuro (Δ ${dv.toFixed(2)} velas)`;
-    const ms=tfMs(tf); if(!ms) return `+${dv.toFixed(2)} velas`;
-    return `+${dv.toFixed(2)} velas (~${new Date(lastTs+dv*ms).toLocaleString()})`;
+    const dv=x-lastI;
+    const targetTs=shiftByTfUnits(lastTs,dv,tf);
+    const dt=Number.isFinite(targetTs)?fmtDuration(targetTs-lastTs):'N/D';
+    if(dv<=0) return `fuera del futuro (Δ ${dv.toFixed(2)} velas = ${dt})`;
+    if(!Number.isFinite(targetTs)) return `+${dv.toFixed(2)} velas`;
+    return `+${dv.toFixed(2)} velas = ${dt} (~${new Date(targetTs).toLocaleString()})`;
   };
   const build=(data,w)=>{
     const closes=data.map(v=>+v[4]), s=Array(data.length).fill(null);
@@ -84,19 +157,55 @@
       const abierta = vela && Number.isFinite(+vela[6]) ? Date.now() <= +vela[6] : null;
       return { etiqueta: ['g[-2]','g[-1]','g[0]'][idx], p, ts, abierta };
     });
-    const rfText=a.xr===null?'N/D — sin cambio de signo; Regula Falsi no aplica todavía':`raíz encerrada entre las dos últimas velas (x=${a.xr.toFixed(3)})`;
+    const monthlyTf=isCalendarMonthTf(currentTimeframe);
+    const regressionStartTs=+data[Math.max(0,u.i-W)]?.[0];
+    const lookbackStartTs=+data[0]?.[0];
+    const regressionTime=monthlyTf && Number.isFinite(regressionStartTs)
+      ? fmtDuration(lastTs-regressionStartTs)
+      : candlesToTime(W,currentTimeframe,lastTs);
+    const oneStepTargetTs=shiftByTfUnits(lastTs,1,currentTimeframe);
+    const forecastTargetTs=shiftByTfUnits(lastTs,H,currentTimeframe);
+    const forecastTime=candlesToTime(H,currentTimeframe,lastTs);
+    const oneStepTime=candlesToTime(1,currentTimeframe,lastTs);
+    const oneStepTargetText=Number.isFinite(oneStepTargetTs)?new Date(oneStepTargetTs).toLocaleString():'N/D';
+    const forecastTargetText=Number.isFinite(forecastTargetTs)?new Date(forecastTargetTs).toLocaleString():'N/D';
+    const lookbackTime=monthlyTf && Number.isFinite(lookbackStartTs)
+      ? fmtDuration(lastTs-lookbackStartTs)
+      : candlesToTime(data.length,currentTimeframe,lastTs);
+    const rfOffset=a.xr===null?null:u.i-a.xr;
+    const rfTargetTs=rfOffset===null?NaN:shiftByTfUnits(lastTs,-rfOffset,currentTimeframe);
+    const rfElapsed=Number.isFinite(rfTargetTs)?fmtDuration(lastTs-rfTargetTs):'N/D';
+    const rfText=a.xr===null
+      ? 'N/D — sin cambio de signo; Regula Falsi no aplica todavía'
+      : `cruce confirmado dentro del último intervalo: hace ${rfOffset.toFixed(3)} velas = ${rfElapsed}`;
     const secanteText=fmtRoot(a.xs,u.i,lastTs,currentTimeframe);
     const iqiText=fmtRoot(a.xq,u.i,lastTs,currentTimeframe);
-    const dispersionText=a.spread===null?'N/D':a.spread.toFixed(3)+' velas';
+    let dispersionText='N/D';
+    if(a.spread!==null){
+      if(monthlyTf && a.xs!==null && a.xq!==null){
+        const tsSec=shiftByTfUnits(lastTs,a.xs-u.i,currentTimeframe);
+        const tsIqi=shiftByTfUnits(lastTs,a.xq-u.i,currentTimeframe);
+        const dt=Number.isFinite(tsSec)&&Number.isFinite(tsIqi)?fmtDuration(Math.abs(tsSec-tsIqi)):'N/D';
+        dispersionText=`${a.spread.toFixed(3)} velas = ${dt}`;
+      }else{
+        dispersionText=`${a.spread.toFixed(3)} velas = ${candlesToTime(a.spread,currentTimeframe,lastTs)}`;
+      }
+    }
+    const monthlyNote=monthlyTf
+      ? '1M usa meses calendario y timestamps reales de Binance; no se supone un mes fijo de 30 días.'
+      : '';
     const velaSerieText=ultimaVelaAbierta===null?'estado desconocido':ultimaVelaAbierta?'ABIERTA':'cerrada';
     const tsv = [
       'REPORTE\tCruce numérico: precio vs pronóstico lineal',
       'Campo\tValor',
       `Mercado\t${String(market).toUpperCase()}`,
       `Par\t${par}`,
-      `TF\t${currentTimeframe}`,
-      `Lookback\t${data.length}`,
-      `Regresión\t${W} velas`,
+      `TF\t${monthlyTf?`${currentTimeframe} (mes calendario variable)`:`${currentTimeframe} (${oneStepTime} por vela)`}`,
+      `Lookback\t${monthlyTf?`${data.length} velas calendario; span entre aperturas = ${lookbackTime}`:`${data.length} velas = ${lookbackTime}`}`,
+      `Ventana de regresión\t${W} velas = ${regressionTime}`,
+      `Pronóstico lineal\t${monthlyTf?`1 paso = próxima vela calendario: ${oneStepTime}; objetivo ${oneStepTargetText}`:`1 paso = 1 vela = ${oneStepTime}`}`,
+      `Horizonte máximo de pronóstico de cruce\t${H} velas = ${forecastTime}${monthlyTf?`; objetivo calendario ${forecastTargetText}`:''}`,
+      ...(monthlyNote?[`Nota temporal\t${monthlyNote}`]:[]),
       `Estado\t${a.state}`,
       `Close\t${u.y.toFixed(4)}`,
       `Pronóstico 1 paso\t${u.p.toFixed(4)}`,
@@ -125,7 +234,12 @@
     resumenDiv.innerHTML='<div id="resumen" style="padding:20px;"></div>'; resumenDiv.classList.add('show');
     document.getElementById('resumen').innerHTML=`
       <h1>Cruce numérico: precio vs pronóstico lineal</h1>
-      <p><b>TF:</b> ${currentTimeframe} | <b>Lookback:</b> ${data.length} | <b>Regresión:</b> ${W} velas</p>
+      <p><b>TF:</b> ${monthlyTf?`${currentTimeframe} — mes calendario variable`:`${currentTimeframe} — 1 vela = ${oneStepTime}`}</p>
+      <p><b>Lookback cargado:</b> ${monthlyTf?`${data.length} velas calendario; span entre aperturas = ${lookbackTime}`:`${data.length} velas = ${lookbackTime}`}</p>
+      <p><b>Ventana de regresión:</b> ${W} velas = ${regressionTime}</p>
+      <p><b>Pronóstico lineal:</b> ${monthlyTf?`1 paso = próxima vela calendario: ${oneStepTime} (objetivo ${oneStepTargetText})`:`1 paso = 1 vela = ${oneStepTime}`}</p>
+      <p><b>Horizonte máximo de pronóstico de cruce:</b> ${H} velas = ${forecastTime}${monthlyTf?` (objetivo calendario ${forecastTargetText})`:''}</p>
+      ${monthlyNote?`<p style="color:#666;"><b>Nota 1M:</b> ${monthlyNote}</p>`:''}
       <p><b>Estado:</b> ${a.state}</p>
       <p><b>Close:</b> ${u.y.toFixed(4)} | <b>Pronóstico 1 paso:</b> ${u.p.toFixed(4)} | <b>g(t):</b> ${u.g.toFixed(4)}</p>
       <p><b>Última vela de la serie:</b> ${velaSerieText}</p>
