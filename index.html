@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Reporte de Criptomonedas v1.2.0</title>
+    <title>Reporte de Criptomonedas v1.2.1</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="./cruce-numerico.js"></script>
     <style>
@@ -133,37 +133,12 @@
         .summary-panel.show {
             display: block;
         }
-        /* === MODO COMPACTO PARA SIMULACIÓN MONTE CARLO === */
-        body.simulation-mode .header-info {
+        /* === VISTA EXCLUSIVA DE ANÁLISIS ===
+           Los controles de consulta permanecen visibles para refrescar velas. */
+        body.analysis-mode .selector {
             margin-bottom: 8px;
-            padding: 8px 12px;
         }
-        body.simulation-mode .header-info h1 {
-            font-size: 18px;
-            margin: 4px 0;
-        }
-        body.simulation-mode .user-info {
-            display: none;
-        }
-        body.simulation-mode .selector {
-            margin-bottom: 8px;
-            padding: 8px;
-            background: #f9f9f9;
-            border-radius: 6px;
-        }
-        body.simulation-mode .selector fieldset:not(.actions) {
-            display: none;
-        }
-        body.simulation-mode .selector fieldset.actions {
-            margin: 0;
-            padding: 8px;
-            border: none;
-            background: transparent;
-        }
-        body.simulation-mode .selector button {
-            font-size: 14px;
-            padding: 8px 16px;
-        }
+
         /* Asegurar que mainPanel tome todo el espacio restante */
         #mainPanel {
             flex: 1;
@@ -188,33 +163,33 @@
         }
 
         /* === SCROLL DEL REPORTE DE ANÁLISIS === */
-        body.simulation-mode #mainPanel {
+        body.analysis-mode #mainPanel {
             overflow-y: auto;
             overflow-x: hidden;
         }
 
-        body.simulation-mode #resumenContainer {
+        body.analysis-mode #resumenContainer {
             box-sizing: border-box;
             max-width: 100%;
         }
 
-        body.simulation-mode #resumen {
+        body.analysis-mode #resumen {
             min-width: 0;
             overflow-x: auto;
             padding-bottom: 8px;
         }
 
-        body.simulation-mode #resumen table {
+        body.analysis-mode #resumen table {
             min-width: 700px;
             width: 100%;
         }
 
-        body.simulation-mode #resumen canvas {
+        body.analysis-mode #resumen canvas {
             max-width: 100%;
         }
 
         @media (max-width: 768px) {
-            body.simulation-mode #resumen table {
+            body.analysis-mode #resumen table {
                 min-width: 640px;
             }
         }
@@ -222,7 +197,7 @@
 </head>
 <body>
     <div class="header-info">
-        <h1 id="tituloReporte">Reporte de Criptomonedas v1.2.0</h1>
+        <h1 id="tituloReporte">Reporte de Criptomonedas v1.2.1</h1>
         <div class="user-info">
             <p>Usuario: <span id="currentUser"></span></p>
             <p>Fecha y Hora (UTC): <span id="currentDateTime"></span></p>
@@ -289,7 +264,6 @@
                 </select>
                 <button type="button" id="ejecutarAnalisis">Ejecutar análisis</button>
             </div>
-            <button type="button" id="toggleTabla" style="display:none;">Ver tabla de velas</button>
         </fieldset>
     </form>
     <div id="mainPanel">
@@ -319,7 +293,8 @@
         </div>
     </div>
     <script>
-        const VERSION = '1.2.0';
+        const VERSION = '1.2.1';
+        // CHANGELOG v1.2.1 (2026-09-23): Vista exclusiva de análisis; controles de consulta siempre visibles; al analizar se liberan tabla y datos de velas y se exige una nueva consulta.
         // CHANGELOG v1.2.0 (2026-09-23): Reemplazo de Ramsey por indicador de cruce numérico con regresión lineal real, Secante, IQI y Regula Falsi.
         // CHANGELOG v1.1.5 (2025-11-05): Aplicado un lookback fijo de 480 velas para el cálculo de todas las métricas y la deriva histórica (mu y sigma) en la Simulación Monte Carlo, resolviendo el conflicto de horizontes temporales.
         // CHANGELOG v1.1.4 (2025-11-05): Implementación del Método Box-Muller para distribución normal en Monte Carlo. El sesgo 'bias' se añade al drift 'mu_adj'. Se corrigió el orden de definición de la variable 'bias' para evitar errores de ejecución.
@@ -380,7 +355,6 @@
             const analysisGroup = document.getElementById('analysisGroup');
             const analysisSelect = document.getElementById('analysisSelect');
             const ejecutarAnalisisBtn = document.getElementById('ejecutarAnalisis');
-            const toggleTablaButton = document.getElementById('toggleTabla');
             const resumenDiv = document.getElementById('resumenContainer');
             let spotPares = [];
             let futurosPares = [];
@@ -468,33 +442,30 @@
                 document.title = nuevoTitulo;
             }
             function activarModoSimulacion() {
-                document.body.classList.add('simulation-mode');
+                // Cada análisis ya preparó su copia local de las velas antes de entrar aquí.
+                // La pantalla de análisis pasa a ser exclusiva y el estado global de velas se libera.
+                document.body.classList.add('analysis-mode');
                 resultadosDiv.style.display = 'none';
                 resumenDiv.classList.add('show');
-                toggleTablaButton.style.display = 'inline-block';
-                toggleTablaButton.textContent = 'Ver tabla de velas';
+
+                datosRaw = [];
+                dataTable.innerHTML = '';
+                progresoPorcentual.textContent = '';
+                totalPares.textContent = '';
+
+                // Para ejecutar otro análisis hay que volver a consultar velas frescas.
+                analysisGroup.style.display = 'none';
+                exportarCSVButton.style.display = 'none';
             }
             function resetModoConsulta() {
-                document.body.classList.remove('simulation-mode');
+                document.body.classList.remove('analysis-mode');
                 resumenDiv.classList.remove('show');
+                resumenDiv.innerHTML = '';
                 resultadosDiv.style.display = 'flex';
-                toggleTablaButton.style.display = 'none';
-                toggleTablaButton.textContent = 'Ver tabla de velas';
+                exportarCSVButton.style.display = 'inline-block';
             }
             function actualizarVisibilidadAnalisis(action) {
                 analysisGroup.style.display = action === 'candles' ? 'inline-flex' : 'none';
-            }
-            function alternarTablaSimulacion() {
-                const tablaOculta = resultadosDiv.style.display === 'none';
-                if (tablaOculta) {
-                    resultadosDiv.style.display = 'flex';
-                    resumenDiv.classList.remove('show');
-                    toggleTablaButton.textContent = 'Volver a simulación';
-                } else {
-                    resultadosDiv.style.display = 'none';
-                    resumenDiv.classList.add('show');
-                    toggleTablaButton.textContent = 'Ver tabla de velas';
-                }
             }
             consultaForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
@@ -521,7 +492,6 @@
                     actualizarTitulo(tipoReporte, par, intervalo, nuevoCodigoUnico, action, marketSelect.value);
                     ocultarCargando();
                     actualizarVisibilidadAnalisis(action);
-                    toggleTablaButton.style.display = 'none';
                     resultadosDiv.style.display = 'flex';
                 } catch (error) {
                     console.error('Error en la consulta:', error);
@@ -1149,7 +1119,6 @@
                 });
             }
 
-            toggleTablaButton.addEventListener('click', alternarTablaSimulacion);
         });
     </script>
 </body>
