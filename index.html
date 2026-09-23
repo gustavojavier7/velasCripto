@@ -186,6 +186,38 @@
         #resultados {
             padding-bottom: 4px;
         }
+
+        /* === SCROLL DEL REPORTE DE ANÁLISIS === */
+        body.simulation-mode #mainPanel {
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        body.simulation-mode #resumenContainer {
+            box-sizing: border-box;
+            max-width: 100%;
+        }
+
+        body.simulation-mode #resumen {
+            min-width: 0;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+
+        body.simulation-mode #resumen table {
+            min-width: 700px;
+            width: 100%;
+        }
+
+        body.simulation-mode #resumen canvas {
+            max-width: 100%;
+        }
+
+        @media (max-width: 768px) {
+            body.simulation-mode #resumen table {
+                min-width: 640px;
+            }
+        }
     </style>
 </head>
 <body>
