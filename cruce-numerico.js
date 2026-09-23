@@ -104,12 +104,14 @@
       const abierta = vela && Number.isFinite(+vela[6]) ? Date.now() <= +vela[6] : null;
       return { etiqueta: ['g[-2]','g[-1]','g[0]'][idx], p, ts, abierta };
     });
-    const tfDuration=tfMs(currentTimeframe);
     const regressionTime=candlesToTime(W,currentTimeframe);
     const forecastTime=candlesToTime(H,currentTimeframe);
     const oneStepTime=candlesToTime(1,currentTimeframe);
     const lookbackTime=candlesToTime(data.length,currentTimeframe);
-    const rfText=a.xr===null?'N/D — sin cambio de signo; Regula Falsi no aplica todavía':`raíz encerrada entre las dos últimas velas (x=${a.xr.toFixed(3)})`;
+    const rfOffset=a.xr===null?null:u.i-a.xr;
+    const rfText=a.xr===null
+      ? 'N/D — sin cambio de signo; Regula Falsi no aplica todavía'
+      : `cruce confirmado dentro del último intervalo: hace ${rfOffset.toFixed(3)} velas = ${candlesToTime(rfOffset,currentTimeframe)}`;
     const secanteText=fmtRoot(a.xs,u.i,lastTs,currentTimeframe);
     const iqiText=fmtRoot(a.xq,u.i,lastTs,currentTimeframe);
     const dispersionText=a.spread===null?'N/D':`${a.spread.toFixed(3)} velas = ${candlesToTime(a.spread,currentTimeframe)}`;
