@@ -72,7 +72,7 @@
       {label:'Cruce confirmado ↓',data:dn,type:'scatter',backgroundColor:'#ef4444',pointRadius:6}
     ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{y:{title:{display:true,text:'Precio'}},x:{ticks:{maxTicksLimit:15}}}}});
   };
-  const run=({datosRaw,currentTimeframe,resumenDiv,activarModoSimulacion,formatearFecha})=>{
+  const run=({datosRaw,currentTimeframe,resumenDiv,activarModoSimulacion,formatearFecha,par='N/D',market='N/D'})=>{
     const LOOKBACK=1000,W=48,H=12,data=datosRaw.slice(-LOOKBACK);
     if(data.length<W+3){alert(`Se requieren al menos ${W+3} velas.`);return;}
     activarModoSimulacion();
@@ -85,6 +85,42 @@
       return { etiqueta: ['g[-2]','g[-1]','g[0]'][idx], p, ts, abierta };
     });
     const rfText=a.xr===null?'N/D — sin cambio de signo; Regula Falsi no aplica todavía':`raíz encerrada entre las dos últimas velas (x=${a.xr.toFixed(3)})`;
+    const secanteText=fmtRoot(a.xs,u.i,lastTs,currentTimeframe);
+    const iqiText=fmtRoot(a.xq,u.i,lastTs,currentTimeframe);
+    const dispersionText=a.spread===null?'N/D':a.spread.toFixed(3)+' velas';
+    const velaSerieText=ultimaVelaAbierta===null?'estado desconocido':ultimaVelaAbierta?'ABIERTA':'cerrada';
+    const tsv = [
+      'REPORTE\tCruce numérico: precio vs pronóstico lineal',
+      'Campo\tValor',
+      `Mercado\t${String(market).toUpperCase()}`,
+      `Par\t${par}`,
+      `TF\t${currentTimeframe}`,
+      `Lookback\t${data.length}`,
+      `Regresión\t${W} velas`,
+      `Estado\t${a.state}`,
+      `Close\t${u.y.toFixed(4)}`,
+      `Pronóstico 1 paso\t${u.p.toFixed(4)}`,
+      `g(t)\t${u.g.toFixed(4)}`,
+      `Próximo pronóstico lineal\t${Number.isFinite(r.next)?r.next.toFixed(4):'N/D'}`,
+      `Última vela de la serie\t${velaSerieText}`,
+      '',
+      'Punto\tTimestamp\tClose\tPronóstico\tg(t)\tVela',
+      ...ultimosTres.map(x=>[
+        x.etiqueta,
+        x.ts,
+        x.p.y.toFixed(4),
+        x.p.p.toFixed(4),
+        x.p.g.toFixed(4),
+        x.abierta===null?'N/D':x.abierta?'abierta':'cerrada'
+      ].join('\t')),
+      '',
+      'Método\tEstimación\tRol',
+      `Secante\t${secanteText}\tAnticipación, 2 errores`,
+      `IQI\t${iqiText}\tAnticipación curva, 3 errores`,
+      `Regula Falsi\t${rfText}\tConfirmación con cambio de signo`,
+      '',
+      `Dispersión Secante–IQI\t${dispersionText}`
+    ].join('\n');
     const direction=u.g>0?'Precio sobre la línea; un cruce futuro implica convergencia hacia abajo.':u.g<0?'Precio bajo la línea; un cruce futuro implica convergencia hacia arriba.':'Precio sobre la línea.';
     resumenDiv.innerHTML='<div id="resumen" style="padding:20px;"></div>'; resumenDiv.classList.add('show');
     document.getElementById('resumen').innerHTML=`
@@ -92,20 +128,47 @@
       <p><b>TF:</b> ${currentTimeframe} | <b>Lookback:</b> ${data.length} | <b>Regresión:</b> ${W} velas</p>
       <p><b>Estado:</b> ${a.state}</p>
       <p><b>Close:</b> ${u.y.toFixed(4)} | <b>Pronóstico 1 paso:</b> ${u.p.toFixed(4)} | <b>g(t):</b> ${u.g.toFixed(4)}</p>
-      <p><b>Última vela de la serie:</b> ${ultimaVelaAbierta===null?'estado desconocido':ultimaVelaAbierta?'ABIERTA':'cerrada'}</p>
+      <p><b>Última vela de la serie:</b> ${velaSerieText}</p>
       <table><thead><tr><th>Punto</th><th>Timestamp</th><th>Close</th><th>Pronóstico</th><th>g(t)</th><th>Vela</th></tr></thead><tbody>
       ${ultimosTres.map(x=>`<tr><td>${x.etiqueta}</td><td>${x.ts}</td><td>${x.p.y.toFixed(4)}</td><td>${x.p.p.toFixed(4)}</td><td>${x.p.g.toFixed(4)}</td><td>${x.abierta===null?'N/D':x.abierta?'abierta':'cerrada'}</td></tr>`).join('')}
       </tbody></table>
       <p><b>Próximo pronóstico lineal:</b> ${Number.isFinite(r.next)?r.next.toFixed(4):'N/D'}</p>
       <p>${direction}</p>
       <table><thead><tr><th>Método</th><th>Estimación</th><th>Rol</th></tr></thead><tbody>
-      <tr><td>Secante</td><td>${fmtRoot(a.xs,u.i,lastTs,currentTimeframe)}</td><td>Anticipación, 2 errores</td></tr>
-      <tr><td>IQI</td><td>${fmtRoot(a.xq,u.i,lastTs,currentTimeframe)}</td><td>Anticipación curva, 3 errores</td></tr>
+      <tr><td>Secante</td><td>${secanteText}</td><td>Anticipación, 2 errores</td></tr>
+      <tr><td>IQI</td><td>${iqiText}</td><td>Anticipación curva, 3 errores</td></tr>
       <tr><td>Regula Falsi</td><td>${rfText}</td><td>Confirmación con cambio de signo</td></tr>
       </tbody></table>
-      <p><b>Dispersión Secante–IQI:</b> ${a.spread===null?'N/D':a.spread.toFixed(3)+' velas'}</p>
+      <p><b>Dispersión Secante–IQI:</b> ${dispersionText}</p>\n      <button type="button" id="copiarReporteTSV" style="margin:12px 0;padding:9px 14px;cursor:pointer;">Copiar reporte tabulado</button>
       <div style="height:380px;margin:15px 0"><canvas id="crossNumericChart"></canvas></div>
       <p style="color:#666;font-size:.9em">g(t)=precio−pronóstico. El indicador separa anticipación (Secante/IQI) de confirmación (Regula Falsi); no interpreta el cruce como señal de compra o venta.</p>`;
+    const copyBtn=document.getElementById('copiarReporteTSV');
+    if(copyBtn){
+      copyBtn.addEventListener('click', async ()=>{
+        const original=copyBtn.textContent;
+        try{
+          if(navigator.clipboard && window.isSecureContext){
+            await navigator.clipboard.writeText(tsv);
+          }else{
+            const ta=document.createElement('textarea');
+            ta.value=tsv;
+            ta.setAttribute('readonly','');
+            ta.style.position='fixed';
+            ta.style.opacity='0';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok=document.execCommand('copy');
+            document.body.removeChild(ta);
+            if(!ok) throw new Error('copy command failed');
+          }
+          copyBtn.textContent='Copiado ✓';
+        }catch(err){
+          console.error('No se pudo copiar el reporte:',err);
+          copyBtn.textContent='Error al copiar';
+        }
+        setTimeout(()=>{copyBtn.textContent=original;},1800);
+      });
+    }
     setTimeout(()=>chart('crossNumericChart',data,r,cross,formatearFecha),100);
     document.body.scrollTop=0; document.documentElement.scrollTop=0;
   };
